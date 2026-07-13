@@ -185,3 +185,54 @@ INSERT IGNORE INTO `configuration` (`key`, `value`, `type`, `description`) VALUE
   ('items_per_page', '10', 'integer', 'Number of items per page'),
   ('max_upload_size', '11333000', 'integer', 'Maximum file upload size in bytes'),
   ('enable_subscriptions', '1', 'boolean', 'Enable newsletter subscriptions');
+
+-- Payment Methods Table (PCI DSS compliant - stores tokenized payment methods)
+CREATE TABLE IF NOT EXISTS `payment_methods` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT NOT NULL,
+  `stripe_payment_method_id` VARCHAR(255) UNIQUE NOT NULL,
+  `type` VARCHAR(50) NOT NULL,
+  `last4` VARCHAR(4),
+  `brand` VARCHAR(50),
+  `exp_month` INT,
+  `exp_year` INT,
+  `is_default` BOOLEAN DEFAULT 0,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_user_id` (`user_id`),
+  INDEX `idx_is_default` (`is_default`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Transactions Table (Stripe payment records)
+CREATE TABLE IF NOT EXISTS `transactions` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT NOT NULL,
+  `order_id` INT,
+  `amount` DECIMAL(10, 2) NOT NULL,
+  `currency` VARCHAR(3) DEFAULT 'USD',
+  `stripe_transaction_id` VARCHAR(255) UNIQUE,
+  `status` VARCHAR(50) DEFAULT 'pending',
+  `payment_method_id` INT,
+  `error_message` TEXT,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_user_id` (`user_id`),
+  INDEX `idx_order_id` (`order_id`),
+  INDEX `idx_status` (`status`),
+  INDEX `idx_stripe_transaction_id` (`stripe_transaction_id`),
+  INDEX `idx_created_at` (`created_at`),
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`payment_method_id`) REFERENCES `payment_methods`(`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Payment Logs Table (Audit trail for compliance)
+CREATE TABLE IF NOT EXISTS `payment_logs` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `transaction_id` INT NOT NULL,
+  `event` VARCHAR(100) NOT NULL,
+  `details` JSON,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_transaction_id` (`transaction_id`),
+  INDEX `idx_event` (`event`),
+  INDEX `idx_created_at` (`created_at`),
+  FOREIGN KEY (`transaction_id`) REFERENCES `transactions`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
