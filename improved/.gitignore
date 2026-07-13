@@ -1,0 +1,47 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Dependencies
+vendor/
+composer.lock
+
+# Logs
+storage/logs/*
+!storage/logs/.gitkeep
+
+# Uploads
+storage/uploads/*
+!storage/uploads/.gitkeep
+
+# Cache
+.phpunit.cache/
+coverage/
+
+# Testing
+phpunit.xml.dist
+phpunit.xml
+
+# OS
+Thumbs.db
+.directory
+
+# Temporary
+*.tmp
+*.bak
+*.backup
+.tmp/
+
+# Node (if using)
+node_modules/
+package-lock.json
+yarn.lock
