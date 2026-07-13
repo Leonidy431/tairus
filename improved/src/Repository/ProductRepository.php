@@ -34,14 +34,14 @@ class ProductRepository extends Repository
         );
     }
 
-    public function search(string $term, int $page = 1, int $perPage = 10): array
+    public function searchProducts(string $term, int $page = 1, int $perPage = 10): array
     {
         $offset = ($page - 1) * $perPage;
         $searchTerm = "%{$term}%";
 
         return $this->db->select(
             "SELECT * FROM {$this->table}
-             WHERE (title LIKE ? OR description LIKE ?) AND is_public = 1
+             WHERE (name LIKE ? OR description LIKE ?) AND is_public = 1
              ORDER BY created_at DESC LIMIT ? OFFSET ?",
             [$searchTerm, $searchTerm, $perPage, $offset]
         );

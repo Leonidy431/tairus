@@ -118,7 +118,7 @@ function handleProductsAction(
     array $config
 ): void {
     if (!empty($searchTerm)) {
-        $data['products'] = $productRepo->search($searchTerm, $page, $config['pagination']['pictures_per_page']);
+        $data['products'] = $productRepo->searchProducts($searchTerm, $page, $config['pagination']['pictures_per_page']);
         $data['title'] = "Search Results: " . htmlspecialchars($searchTerm);
     } elseif (!empty($category)) {
         $data['category'] = $category;
@@ -179,7 +179,7 @@ function handleSearchAction(
     }
 
     $data['search_term'] = htmlspecialchars($searchTerm);
-    $data['results'] = $productRepo->search($searchTerm, $page, $config['pagination']['pictures_per_page']);
+    $data['results'] = $productRepo->searchProducts($searchTerm, $page, $config['pagination']['pictures_per_page']);
     $data['title'] = "Search: " . htmlspecialchars($searchTerm);
 }
 

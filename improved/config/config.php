@@ -16,6 +16,7 @@ return [
         'username' => env('DB_USERNAME', 'root'),
         'password' => env('DB_PASSWORD', ''),
         'charset'  => env('DB_CHARSET', 'utf8mb4'),
+        'path'     => defined('BASE_PATH') ? BASE_PATH . '/' . env('DB_PATH', 'storage/database.sqlite') : env('DB_PATH', 'storage/database.sqlite'),
     ],
 
     // Email Configuration

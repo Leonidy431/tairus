@@ -5,6 +5,16 @@
  * Initializes the application, loads configuration, and sets up core services.
  */
 
+// Define base path early
+define('BASE_PATH', dirname(__FILE__));
+define('PUBLIC_PATH', BASE_PATH . '/public');
+define('STORAGE_PATH', BASE_PATH . '/storage');
+define('LOGS_PATH', STORAGE_PATH . '/logs');
+
+// Load helpers FIRST
+require_once BASE_PATH . '/src/Helpers/env.php';
+
+// Now we can use env() function
 // Error reporting
 error_reporting(E_ALL);
 ini_set('display_errors', env('APP_DEBUG', false) ? '1' : '0');
@@ -12,12 +22,6 @@ ini_set('log_errors', '1');
 
 // Set timezone
 date_default_timezone_set(env('APP_TIMEZONE', 'UTC'));
-
-// Define base path
-define('BASE_PATH', dirname(__FILE__));
-define('PUBLIC_PATH', BASE_PATH . '/public');
-define('STORAGE_PATH', BASE_PATH . '/storage');
-define('LOGS_PATH', STORAGE_PATH . '/logs');
 
 // Create necessary directories
 $dirs = [LOGS_PATH, STORAGE_PATH . '/uploads'];
@@ -37,9 +41,6 @@ spl_autoload_register(function ($class) {
         }
     }
 });
-
-// Load helpers
-require_once BASE_PATH . '/src/Helpers/env.php';
 require_once BASE_PATH . '/src/Helpers/permissions.php';
 
 // Load environment variables
@@ -61,11 +62,20 @@ $GLOBALS['db'] = $database;
 
 // Setup session with security headers
 if (session_status() === PHP_SESSION_NONE) {
+    $isSecure = !in_array($_SERVER['HTTP_HOST'] ?? '', ['localhost', '127.0.0.1', '0.0.0.0']);
+
+    // Configure session cookie settings
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path' => '/',
+        'domain' => '',
+        'secure' => $isSecure,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+
     session_start([
         'use_only_cookies' => true,
-        'httponly' => true,
-        'secure' => !in_array($_SERVER['HTTP_HOST'] ?? '', ['localhost', '127.0.0.1']),
-        'samesite' => 'Lax',
     ]);
 }
 

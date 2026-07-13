@@ -26,16 +26,21 @@ class Database
     {
         try {
             $dsn = $this->buildDSN();
+            $options = [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_EMULATE_PREPARES => false,
+            ];
+
+            if ($this->config['driver'] === 'mysql') {
+                $options[PDO::MYSQL_ATTR_INIT_COMMAND] = "SET NAMES {$this->config['charset']}";
+            }
+
             $this->connection = new PDO(
                 $dsn,
-                $this->config['username'],
-                $this->config['password'],
-                [
-                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                    PDO::ATTR_EMULATE_PREPARES => false,
-                    PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES {$this->config['charset']}",
-                ]
+                $this->config['username'] ?? null,
+                $this->config['password'] ?? null,
+                $options
             );
         } catch (PDOException $e) {
             throw new DatabaseException('Database connection failed: ' . $e->getMessage());
@@ -44,6 +49,10 @@ class Database
 
     private function buildDSN(): string
     {
+        if ($this->config['driver'] === 'sqlite') {
+            return sprintf('sqlite:%s', $this->config['path']);
+        }
+
         return sprintf(
             '%s:host=%s;port=%d;dbname=%s',
             $this->config['driver'],
