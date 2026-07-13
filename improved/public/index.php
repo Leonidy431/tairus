@@ -12,6 +12,7 @@ use App\Database\Database;
 use App\Repository\ProductRepository;
 use App\Repository\NewsRepository;
 use App\Repository\SubscriptionRepository;
+use App\Controllers\LoginController;
 use App\Security\Sanitizer;
 use App\Security\CsrfToken;
 use App\File\FileUploader;
@@ -46,6 +47,14 @@ $data = [
 // Route handling
 try {
     switch ($action) {
+        case 'login':
+            handleLoginAction($db, $data, $config);
+            break;
+
+        case 'logout':
+            handleLogoutAction($db, $data);
+            break;
+
         case 'products':
             handleProductsAction($productRepo, $data, $category, $searchTerm, $page, $config);
             break;
@@ -294,6 +303,9 @@ function renderPage(string $action, array $data): void
 
             <?php
             switch ($action) {
+                case 'login':
+                    renderLogin($data);
+                    break;
                 case 'home':
                     renderHome($data);
                     break;
@@ -502,4 +514,78 @@ function renderContact(array $data): void
         <button type="submit" class="btn">Send Message</button>
     </form>
     <?php
+}
+
+/**
+ * Render login form
+ */
+function renderLogin(array $data): void
+{
+    $isLoggedIn = LoginController::isLoggedIn();
+
+    if ($isLoggedIn) {
+        echo '<p>You are already logged in. <a href="?action=logout">Logout</a></p>';
+        return;
+    }
+    ?>
+    <h2>Login</h2>
+    <form method="POST" class="login-form">
+        <input type="hidden" name="_token" value="<?php echo $data['csrf_token']; ?>">
+
+        <div class="form-group">
+            <label for="username">Username or Email (required)</label>
+            <input type="text" id="username" name="username" required autofocus>
+        </div>
+
+        <div class="form-group">
+            <label for="password">Password (required)</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+
+        <div class="form-group">
+            <input type="checkbox" id="remember_me" name="remember_me" value="1">
+            <label for="remember_me">Remember me for 7 days</label>
+        </div>
+
+        <button type="submit" class="btn">Login</button>
+    </form>
+    <?php
+}
+
+/**
+ * Handle login action
+ */
+function handleLoginAction(Database $db, array &$data, array $config): void
+{
+    $loginController = new LoginController($db);
+    $result = $loginController->login();
+
+    if ($result['success']) {
+        $data['success'] = 'Login successful! Redirecting...';
+        // In production, redirect after rendering
+        header('Location: ' . $result['redirect'], true, 302);
+        exit;
+    }
+
+    if ($result['error']) {
+        $data['error'] = $result['error'];
+    }
+
+    $data['csrf_token'] = $result['csrf_token'];
+}
+
+/**
+ * Handle logout action
+ */
+function handleLogoutAction(Database $db, array &$data): void
+{
+    $loginController = new LoginController($db);
+    $result = $loginController->logout();
+
+    if ($result['success']) {
+        $data['success'] = $result['message'];
+        // Redirect to home page
+        header('Location: ?action=home', true, 302);
+        exit;
+    }
 }

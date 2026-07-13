@@ -12,7 +12,8 @@
   "require": {
     "php": "^7.4",
     "ext-pdo": "*",
-    "ext-json": "*"
+    "ext-json": "*",
+    "stripe/stripe-php": "^9.0"
   },
   "require-dev": {
     "phpunit/phpunit": "^9.5",
