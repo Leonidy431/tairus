@@ -12,11 +12,19 @@ use App\Database\Database;
 use App\Repository\ProductRepository;
 use App\Repository\NewsRepository;
 use App\Repository\SubscriptionRepository;
-use App\Controllers\LoginController;
+use App\Repository\UserRepository;
+use App\Controllers\RegistrationController;
+use App\Controllers\PaymentController;
 use App\Security\Sanitizer;
 use App\Security\CsrfToken;
 use App\File\FileUploader;
 use App\Mail\Mailer;
+
+// Handle Stripe webhook endpoint
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && strpos($_SERVER['REQUEST_URI'] ?? '', '/webhook/stripe') !== false) {
+    handleStripeWebhook($GLOBALS['db']);
+    exit;
+}
 
 // Initialize services
 $db = $GLOBALS['db'];
@@ -25,6 +33,7 @@ $config = $GLOBALS['config'];
 $productRepo = new ProductRepository($db);
 $newsRepo = new NewsRepository($db);
 $subscriptionRepo = new SubscriptionRepository($db);
+$userRepo = new UserRepository($db);
 
 // Get request parameters safely
 $action = Sanitizer::string($_GET['action'] ?? 'home');
@@ -47,12 +56,12 @@ $data = [
 // Route handling
 try {
     switch ($action) {
-        case 'login':
-            handleLoginAction($db, $data, $config);
+        case 'register':
+            handleRegistrationAction($userRepo, $data, $config);
             break;
 
-        case 'logout':
-            handleLogoutAction($db, $data);
+        case 'verify-email':
+            handleVerifyEmailAction($userRepo, $data);
             break;
 
         case 'products':
@@ -93,6 +102,61 @@ try {
 
 // Render response
 renderPage($action, $data);
+
+/**
+ * Handle Stripe webhook events
+ */
+function handleStripeWebhook(Database $db): void
+{
+    // Get raw payload and signature
+    $payload = file_get_contents('php://input');
+    $signature = $_SERVER['HTTP_STRIPE_SIGNATURE'] ?? '';
+
+    if (empty($payload) || empty($signature)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Missing payload or signature']);
+        return;
+    }
+
+    try {
+        $paymentController = new PaymentController($db);
+        $result = $paymentController->handleWebhook($payload, $signature);
+
+        http_response_code(200);
+        echo json_encode($result);
+    } catch (\Exception $e) {
+        error_log("Webhook error: " . $e->getMessage());
+        http_response_code(400);
+        echo json_encode(['error' => $e->getMessage()]);
+    }
+}
+
+/**
+ * Handle user registration
+ */
+function handleRegistrationAction(UserRepository $userRepo, array &$data, array $config): void
+{
+    $mailer = new Mailer($config['email']['from_address'], $config['email']['from_name']);
+    $controller = new RegistrationController($userRepo, $mailer, $config);
+
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $data = array_merge($data, $controller->store());
+    } else {
+        $data = array_merge($data, $controller->show());
+    }
+}
+
+/**
+ * Handle email verification
+ */
+function handleVerifyEmailAction(UserRepository $userRepo, array &$data): void
+{
+    $token = Sanitizer::string($_GET['token'] ?? '');
+    $mailer = new Mailer('noreply@localhost', 'System');
+    $controller = new RegistrationController($userRepo, $mailer, []);
+
+    $data = array_merge($data, $controller->verify($token));
+}
 
 /**
  * Handle home page action
@@ -287,6 +351,7 @@ function renderPage(string $action, array $data): void
                     <a href="?action=home">Home</a>
                     <a href="?action=products">Products</a>
                     <a href="?action=news">News</a>
+                    <a href="?action=register">Register</a>
                     <a href="?action=contact">Contact</a>
                 </nav>
             </div>
@@ -303,9 +368,6 @@ function renderPage(string $action, array $data): void
 
             <?php
             switch ($action) {
-                case 'login':
-                    renderLogin($data);
-                    break;
                 case 'home':
                     renderHome($data);
                     break;
@@ -320,6 +382,12 @@ function renderPage(string $action, array $data): void
                     break;
                 case 'search':
                     renderSearch($data);
+                    break;
+                case 'register':
+                    renderRegistration($data);
+                    break;
+                case 'verify-email':
+                    renderVerifyEmail($data);
                     break;
                 case 'contact':
                     renderContact($data);
@@ -482,6 +550,81 @@ function renderSearch(array $data): void
 }
 
 /**
+ * Render registration form
+ */
+function renderRegistration(array $data): void
+{
+    ?>
+    <div class="registration-form">
+        <h2><?php echo $data['title'] ?? 'Register'; ?></h2>
+
+        <form method="POST" class="form">
+            <input type="hidden" name="_token" value="<?php echo $data['csrf_token']; ?>">
+
+            <div class="form-group">
+                <label for="name">Full Name (required)</label>
+                <input type="text" id="name" name="name" value="<?php echo $data['old_input']['name'] ?? ''; ?>" required>
+                <?php if (isset($data['errors']['name'])): ?>
+                    <span class="error"><?php echo $data['errors']['name']; ?></span>
+                <?php endif; ?>
+            </div>
+
+            <div class="form-group">
+                <label for="email">Email Address (required)</label>
+                <input type="email" id="email" name="email" value="<?php echo $data['old_input']['email'] ?? ''; ?>" required>
+                <?php if (isset($data['errors']['email'])): ?>
+                    <span class="error"><?php echo $data['errors']['email']; ?></span>
+                <?php endif; ?>
+            </div>
+
+            <div class="form-group">
+                <label for="phone">Phone Number (optional)</label>
+                <input type="tel" id="phone" name="phone" value="<?php echo $data['old_input']['phone'] ?? ''; ?>">
+            </div>
+
+            <div class="form-group">
+                <label for="password">Password (required)</label>
+                <input type="password" id="password" name="password" required>
+                <small>At least 8 characters with uppercase, lowercase, number, and special character</small>
+                <?php if (isset($data['errors']['password'])): ?>
+                    <span class="error"><?php echo $data['errors']['password']; ?></span>
+                <?php endif; ?>
+            </div>
+
+            <div class="form-group">
+                <label for="password_confirmation">Confirm Password (required)</label>
+                <input type="password" id="password_confirmation" name="password_confirmation" required>
+                <?php if (isset($data['errors']['password_confirmation'])): ?>
+                    <span class="error"><?php echo $data['errors']['password_confirmation']; ?></span>
+                <?php endif; ?>
+            </div>
+
+            <button type="submit" class="btn">Register</button>
+        </form>
+    </div>
+    <?php
+}
+
+/**
+ * Render email verification confirmation
+ */
+function renderVerifyEmail(array $data): void
+{
+    ?>
+    <div class="verification-result">
+        <h2>Email Verification</h2>
+        <?php if (isset($data['success'])): ?>
+            <p class="success"><?php echo $data['success']; ?></p>
+            <p><a href="?action=home" class="btn">Return to Home</a></p>
+        <?php else: ?>
+            <p class="error"><?php echo $data['error'] ?? 'Verification failed'; ?></p>
+            <p><a href="?action=home" class="btn">Return to Home</a></p>
+        <?php endif; ?>
+    </div>
+    <?php
+}
+
+/**
  * Render contact form
  */
 function renderContact(array $data): void
@@ -514,78 +657,4 @@ function renderContact(array $data): void
         <button type="submit" class="btn">Send Message</button>
     </form>
     <?php
-}
-
-/**
- * Render login form
- */
-function renderLogin(array $data): void
-{
-    $isLoggedIn = LoginController::isLoggedIn();
-
-    if ($isLoggedIn) {
-        echo '<p>You are already logged in. <a href="?action=logout">Logout</a></p>';
-        return;
-    }
-    ?>
-    <h2>Login</h2>
-    <form method="POST" class="login-form">
-        <input type="hidden" name="_token" value="<?php echo $data['csrf_token']; ?>">
-
-        <div class="form-group">
-            <label for="username">Username or Email (required)</label>
-            <input type="text" id="username" name="username" required autofocus>
-        </div>
-
-        <div class="form-group">
-            <label for="password">Password (required)</label>
-            <input type="password" id="password" name="password" required>
-        </div>
-
-        <div class="form-group">
-            <input type="checkbox" id="remember_me" name="remember_me" value="1">
-            <label for="remember_me">Remember me for 7 days</label>
-        </div>
-
-        <button type="submit" class="btn">Login</button>
-    </form>
-    <?php
-}
-
-/**
- * Handle login action
- */
-function handleLoginAction(Database $db, array &$data, array $config): void
-{
-    $loginController = new LoginController($db);
-    $result = $loginController->login();
-
-    if ($result['success']) {
-        $data['success'] = 'Login successful! Redirecting...';
-        // In production, redirect after rendering
-        header('Location: ' . $result['redirect'], true, 302);
-        exit;
-    }
-
-    if ($result['error']) {
-        $data['error'] = $result['error'];
-    }
-
-    $data['csrf_token'] = $result['csrf_token'];
-}
-
-/**
- * Handle logout action
- */
-function handleLogoutAction(Database $db, array &$data): void
-{
-    $loginController = new LoginController($db);
-    $result = $loginController->logout();
-
-    if ($result['success']) {
-        $data['success'] = $result['message'];
-        // Redirect to home page
-        header('Location: ?action=home', true, 302);
-        exit;
-    }
 }
