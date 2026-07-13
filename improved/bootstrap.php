@@ -40,6 +40,7 @@ spl_autoload_register(function ($class) {
 
 // Load helpers
 require_once BASE_PATH . '/src/Helpers/env.php';
+require_once BASE_PATH . '/src/Helpers/permissions.php';
 
 // Load environment variables
 loadEnv(BASE_PATH . '/.env');

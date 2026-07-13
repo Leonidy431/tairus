@@ -2,7 +2,7 @@
 /**
  * User Repository
  *
- * Handles database operations for user management and authentication.
+ * Handles all user-related database operations including authentication and profile management.
  */
 
 namespace App\Repository;
@@ -30,153 +30,131 @@ class UserRepository extends Repository
     }
 
     /**
-     * Find user by username
+     * Create new user
      */
-    public function findByUsername(string $username): ?array
+    public function create(array $data): int
     {
-        return $this->db->selectOne(
-            "SELECT * FROM {$this->table} WHERE username = ?",
-            [$username]
-        );
+        if (isset($data['password'])) {
+            $data['password'] = password_hash($data['password'], PASSWORD_BCRYPT);
+        }
+
+        return $this->save($data);
     }
 
     /**
-     * Find user by username or email
+     * Update user
      */
-    public function findByUsernameOrEmail(string $identifier): ?array
+    public function update(int $id, array $data): bool
     {
-        return $this->db->selectOne(
-            "SELECT * FROM {$this->table} WHERE username = ? OR email = ?",
-            [$identifier, $identifier]
-        );
+        if (isset($data['password'])) {
+            $data['password'] = password_hash($data['password'], PASSWORD_BCRYPT);
+        }
+
+        $data['id'] = $id;
+        $this->save($data);
+        return true;
     }
 
     /**
-     * Verify password for user
+     * Check if email exists
      */
-    public function verifyPassword(string $plainPassword, string $hashedPassword): bool
+    public function emailExists(string $email): bool
     {
-        return password_verify($plainPassword, $hashedPassword);
+        return $this->findByEmail($email) !== null;
     }
 
     /**
-     * Hash password for storage
+     * Verify user password
      */
-    public function hashPassword(string $password): string
+    public function verifyPassword(string $email, string $password): bool
     {
-        return password_hash($password, PASSWORD_ARGON2ID);
+        $user = $this->findByEmail($email);
+
+        if (!$user) {
+            return false;
+        }
+
+        return password_verify($password, $user['password']);
     }
 
     /**
-     * Update last login timestamp
+     * Activate user
+     */
+    public function activate(int $userId): bool
+    {
+        return $this->db->update($this->table, ['is_active' => 1], ['id' => $userId]);
+    }
+
+    /**
+     * Deactivate user
+     */
+    public function deactivate(int $userId): bool
+    {
+        return $this->db->update($this->table, ['is_active' => 0], ['id' => $userId]);
+    }
+
+    /**
+     * Update last login time
      */
     public function updateLastLogin(int $userId): bool
     {
-        return $this->db->update(
-            $this->table,
-            ['last_login_at' => date('Y-m-d H:i:s')],
-            ['id' => $userId]
-        );
+        return $this->db->update($this->table, ['last_login' => date('Y-m-d H:i:s')], ['id' => $userId]);
     }
 
     /**
-     * Record login attempt
+     * Get active users count
      */
-    public function recordLoginAttempt(
-        ?int $userId,
-        string $ipAddress,
-        string $username,
-        bool $success
-    ): void {
-        $this->db->insert('login_attempts', [
-            'user_id' => $userId,
-            'ip_address' => $ipAddress,
-            'username' => $username,
-            'success' => $success ? 1 : 0,
-        ]);
-    }
-
-    /**
-     * Get failed login attempts for IP in last 15 minutes
-     */
-    public function getFailedLoginAttempts(string $ipAddress, int $minutes = 15): int
+    public function countActiveUsers(): int
     {
-        $result = $this->db->selectOne(
-            "SELECT COUNT(*) as count FROM login_attempts
-             WHERE ip_address = ? AND success = 0
-             AND attempted_at >= DATE_SUB(NOW(), INTERVAL ? MINUTE)",
-            [$ipAddress, $minutes]
-        );
-
-        return (int)($result['count'] ?? 0);
+        return $this->count(['is_active' => 1]);
     }
 
     /**
-     * Create remember me token
+     * Get users with roles
      */
-    public function createRememberToken(int $userId, int $daysValid = 7): string
+    public function getUsersWithRoles(int $limit = null, int $offset = 0): array
     {
-        $token = bin2hex(random_bytes(32));
-        $expiresAt = date('Y-m-d H:i:s', strtotime("+{$daysValid} days"));
+        $query = "SELECT u.*, GROUP_CONCAT(r.name) as roles
+                  FROM {$this->table} u
+                  LEFT JOIN user_roles ur ON u.id = ur.user_id
+                  LEFT JOIN roles r ON ur.role_id = r.id
+                  GROUP BY u.id
+                  ORDER BY u.name";
 
-        $this->db->insert('remember_me_tokens', [
-            'user_id' => $userId,
-            'token' => $token,
-            'expires_at' => $expiresAt,
-        ]);
+        if ($limit !== null) {
+            $query .= " LIMIT ? OFFSET ?";
+            return $this->db->select($query, [$limit, $offset]);
+        }
 
-        return $token;
+        return $this->db->select($query);
     }
 
     /**
-     * Verify remember me token
+     * Get user roles
      */
-    public function verifyRememberToken(string $token): ?array
-    {
-        return $this->db->selectOne(
-            "SELECT * FROM remember_me_tokens
-             WHERE token = ? AND expires_at > NOW()",
-            [$token]
-        );
-    }
-
-    /**
-     * Revoke remember token
-     */
-    public function revokeRememberToken(string $token): bool
-    {
-        return $this->db->delete('remember_me_tokens', ['token' => $token]);
-    }
-
-    /**
-     * Revoke all remember tokens for user
-     */
-    public function revokeAllRememberTokens(int $userId): bool
-    {
-        return $this->db->delete('remember_me_tokens', ['user_id' => $userId]);
-    }
-
-    /**
-     * Clean expired remember tokens
-     */
-    public function cleanExpiredTokens(): void
-    {
-        $this->db->getConnection()->exec(
-            "DELETE FROM remember_me_tokens WHERE expires_at < NOW()"
-        );
-    }
-
-    /**
-     * Get login attempt history for user
-     */
-    public function getLoginHistory(int $userId, int $limit = 10): array
+    public function getRoles(int $userId): array
     {
         return $this->db->select(
-            "SELECT * FROM login_attempts
-             WHERE user_id = ?
-             ORDER BY attempted_at DESC
-             LIMIT ?",
-            [$userId, $limit]
+            "SELECT r.* FROM roles r
+             JOIN user_roles ur ON r.id = ur.role_id
+             WHERE ur.user_id = ?
+             ORDER BY r.name",
+            [$userId]
+        );
+    }
+
+    /**
+     * Get user permissions
+     */
+    public function getPermissions(int $userId): array
+    {
+        return $this->db->select(
+            "SELECT DISTINCT p.* FROM permissions p
+             JOIN role_permissions rp ON p.id = rp.permission_id
+             JOIN user_roles ur ON rp.role_id = ur.role_id
+             WHERE ur.user_id = ?
+             ORDER BY p.name",
+            [$userId]
         );
     }
 }

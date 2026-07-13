@@ -1,50 +1,106 @@
 -- Database Schema for Painting Sales Website
 -- Modern structure following best practices
 
--- Users Table (for authentication)
+-- Users Table
 CREATE TABLE IF NOT EXISTS `users` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
-  `username` VARCHAR(100) NOT NULL UNIQUE,
+  `name` VARCHAR(255) NOT NULL,
   `email` VARCHAR(255) NOT NULL UNIQUE,
-  `password_hash` VARCHAR(255) NOT NULL,
-  `full_name` VARCHAR(255),
+  `password` VARCHAR(255) NOT NULL,
   `is_active` BOOLEAN DEFAULT TRUE,
-  `is_admin` BOOLEAN DEFAULT FALSE,
-  `last_login_at` TIMESTAMP NULL,
+  `last_login` TIMESTAMP NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX `idx_email` (`email`),
-  INDEX `idx_username` (`username`),
   INDEX `idx_is_active` (`is_active`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Login Attempts Table (for rate limiting and audit)
-CREATE TABLE IF NOT EXISTS `login_attempts` (
-  `id` INT AUTO_INCREMENT PRIMARY KEY,
-  `user_id` INT,
-  `ip_address` VARCHAR(45) NOT NULL,
-  `username` VARCHAR(100),
-  `success` BOOLEAN DEFAULT FALSE,
-  `attempted_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
-  INDEX `idx_ip_address` (`ip_address`),
-  INDEX `idx_attempted_at` (`attempted_at`),
-  INDEX `idx_user_id` (`user_id`),
-  INDEX `idx_username` (`username`)
+-- Roles Table
+CREATE TABLE IF NOT EXISTS `roles` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `name` VARCHAR(100) UNIQUE NOT NULL,
+  `description` TEXT,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Remember Me Tokens Table (for persistent login)
-CREATE TABLE IF NOT EXISTS `remember_me_tokens` (
-  `id` INT AUTO_INCREMENT PRIMARY KEY,
-  `user_id` INT NOT NULL,
-  `token` VARCHAR(255) UNIQUE NOT NULL,
-  `expires_at` TIMESTAMP NOT NULL,
+-- Permissions Table
+CREATE TABLE IF NOT EXISTS `permissions` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `name` VARCHAR(100) UNIQUE NOT NULL,
+  `description` TEXT,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Role Permissions Junction Table
+CREATE TABLE IF NOT EXISTS `role_permissions` (
+  `role_id` INT NOT NULL,
+  `permission_id` INT NOT NULL,
+  PRIMARY KEY (`role_id`, `permission_id`),
+  FOREIGN KEY (`role_id`) REFERENCES `roles`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`permission_id`) REFERENCES `permissions`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- User Roles Junction Table
+CREATE TABLE IF NOT EXISTS `user_roles` (
+  `user_id` INT NOT NULL,
+  `role_id` INT NOT NULL,
+  `assigned_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`user_id`, `role_id`),
   FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
-  INDEX `idx_token` (`token`),
-  INDEX `idx_expires_at` (`expires_at`),
+  FOREIGN KEY (`role_id`) REFERENCES `roles`(`id`) ON DELETE CASCADE,
   INDEX `idx_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Admin Activity Log Table
+CREATE TABLE IF NOT EXISTS `admin_activity_logs` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `admin_id` INT NOT NULL,
+  `action` VARCHAR(50),
+  `entity_type` VARCHAR(100),
+  `entity_id` INT,
+  `changes` JSON,
+  `ip_address` VARCHAR(45),
+  `user_agent` VARCHAR(500),
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`admin_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+  INDEX `idx_admin_id_created_at` (`admin_id`, `created_at`),
+  INDEX `idx_entity` (`entity_type`, `entity_id`),
+  INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Insert default roles
+INSERT IGNORE INTO `roles` (`name`, `description`) VALUES
+  ('admin', 'System administrator with full access'),
+  ('moderator', 'Content moderator with limited access'),
+  ('user', 'Regular user with minimal access');
+
+-- Insert base permissions
+INSERT IGNORE INTO `permissions` (`name`, `description`) VALUES
+  ('view_dashboard', 'View admin dashboard'),
+  ('manage_products', 'Create, update, delete products'),
+  ('manage_orders', 'Manage customer orders'),
+  ('manage_users', 'Manage user accounts'),
+  ('manage_payments', 'Handle payment processing'),
+  ('view_analytics', 'View analytics and reports'),
+  ('manage_settings', 'Configure system settings'),
+  ('view_logs', 'View activity logs'),
+  ('manage_permissions', 'Assign roles and permissions');
+
+-- Assign all permissions to admin role
+INSERT IGNORE INTO `role_permissions` (role_id, permission_id)
+SELECT r.id, p.id FROM roles r, permissions p WHERE r.name = 'admin';
+
+-- Assign limited permissions to moderator role
+INSERT IGNORE INTO `role_permissions` (role_id, permission_id)
+SELECT r.id, p.id FROM roles r, permissions p
+WHERE r.name = 'moderator' AND p.name IN ('view_dashboard', 'manage_products', 'view_analytics', 'view_logs');
+
+-- Assign minimal permissions to user role
+INSERT IGNORE INTO `role_permissions` (role_id, permission_id)
+SELECT r.id, p.id FROM roles r, permissions p
+WHERE r.name = 'user' AND p.name = 'view_dashboard';
 
 -- Products/Paintings Table
 CREATE TABLE IF NOT EXISTS `products` (
@@ -178,14 +234,6 @@ CREATE TABLE IF NOT EXISTS `configuration` (
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Insert sample configuration
-INSERT IGNORE INTO `configuration` (`key`, `value`, `type`, `description`) VALUES
-  ('site_name', 'Art Gallery', 'string', 'Website name'),
-  ('site_description', 'Online art gallery and painting sales platform', 'string', 'Website description'),
-  ('items_per_page', '10', 'integer', 'Number of items per page'),
-  ('max_upload_size', '11333000', 'integer', 'Maximum file upload size in bytes'),
-  ('enable_subscriptions', '1', 'boolean', 'Enable newsletter subscriptions');
-
 -- Payment Methods Table (PCI DSS compliant - stores tokenized payment methods)
 CREATE TABLE IF NOT EXISTS `payment_methods` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
@@ -236,3 +284,11 @@ CREATE TABLE IF NOT EXISTS `payment_logs` (
   INDEX `idx_created_at` (`created_at`),
   FOREIGN KEY (`transaction_id`) REFERENCES `transactions`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Insert sample configuration
+INSERT IGNORE INTO `configuration` (`key`, `value`, `type`, `description`) VALUES
+  ('site_name', 'Art Gallery', 'string', 'Website name'),
+  ('site_description', 'Online art gallery and painting sales platform', 'string', 'Website description'),
+  ('items_per_page', '10', 'integer', 'Number of items per page'),
+  ('max_upload_size', '11333000', 'integer', 'Maximum file upload size in bytes'),
+  ('enable_subscriptions', '1', 'boolean', 'Enable newsletter subscriptions');
