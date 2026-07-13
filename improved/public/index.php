@@ -16,6 +16,7 @@ use App\Security\Sanitizer;
 use App\Security\CsrfToken;
 use App\File\FileUploader;
 use App\Mail\Mailer;
+use App\Controllers\PaymentController;
 
 // Initialize services
 $db = $GLOBALS['db'];
@@ -32,6 +33,12 @@ $page = Sanitizer::integer($_GET['page'] ?? 1) ?? 1;
 $searchTerm = Sanitizer::string($_GET['search'] ?? '');
 
 // Ensure minimum page value
+
+// Handle Stripe webhook endpoint
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && strpos($_SERVER['REQUEST_URI'] ?? '', '/webhook/stripe') !== false) {
+    handleStripeWebhook($GLOBALS['db']);
+    exit;
+}
 $page = max(1, $page);
 
 // Initialize response data
@@ -502,4 +509,32 @@ function renderContact(array $data): void
         <button type="submit" class="btn">Send Message</button>
     </form>
     <?php
+}
+
+/**
+ * Handle Stripe webhook events
+ */
+function handleStripeWebhook(Database $db): void
+{
+    // Get raw payload and signature
+    $payload = file_get_contents('php://input');
+    $signature = $_SERVER['HTTP_STRIPE_SIGNATURE'] ?? '';
+
+    if (empty($payload) || empty($signature)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Missing payload or signature']);
+        return;
+    }
+
+    try {
+        $paymentController = new PaymentController($db);
+        $result = $paymentController->handleWebhook($payload, $signature);
+
+        http_response_code(200);
+        echo json_encode($result);
+    } catch (\Exception $e) {
+        error_log("Webhook error: " . $e->getMessage());
+        http_response_code(400);
+        echo json_encode(['error' => $e->getMessage()]);
+    }
 }

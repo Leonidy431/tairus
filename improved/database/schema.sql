@@ -7,15 +7,31 @@ CREATE TABLE IF NOT EXISTS `users` (
   `name` VARCHAR(255) NOT NULL,
   `email` VARCHAR(255) NOT NULL UNIQUE,
   `password` VARCHAR(255) NOT NULL,
+  `phone` VARCHAR(20),
   `is_active` BOOLEAN DEFAULT TRUE,
+  `verified_at` TIMESTAMP NULL,
+  `email_verification_token` VARCHAR(255),
+  `token_expires_at` TIMESTAMP NULL,
   `last_login` TIMESTAMP NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX `idx_email` (`email`),
-  INDEX `idx_is_active` (`is_active`)
+  INDEX `idx_is_active` (`is_active`),
+  INDEX `idx_verified_at` (`verified_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Roles Table
+
+-- Email Verification Tokens Table
+CREATE TABLE IF NOT EXISTS `email_verification_tokens` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT NOT NULL,
+  `token` VARCHAR(255) NOT NULL UNIQUE,
+  `expires_at` TIMESTAMP NOT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+  INDEX `idx_token` (`token`),
+  INDEX `idx_expires_at` (`expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;-- Roles Table
 CREATE TABLE IF NOT EXISTS `roles` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
   `name` VARCHAR(100) UNIQUE NOT NULL,
