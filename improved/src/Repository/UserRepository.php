@@ -2,7 +2,7 @@
 /**
  * User Repository
  *
- * Handles all user-related database operations including authentication and profile management.
+ * Handles database operations for user registration, authentication, and email verification.
  */
 
 namespace App\Repository;
@@ -12,6 +12,7 @@ use App\Database\Database;
 class UserRepository extends Repository
 {
     protected string $table = 'users';
+    protected string $tokenTable = 'email_verification_tokens';
 
     public function __construct(Database $db)
     {
@@ -19,142 +20,196 @@ class UserRepository extends Repository
     }
 
     /**
-     * Find user by email
+     * Register a new user with email verification
      */
-    public function findByEmail(string $email): ?array
+    public function register(string $email, string $password, string $name, ?string $phone = null): int|false
+    {
+        // Hash password with bcrypt
+        $hashedPassword = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
+
+        // Generate email verification token
+        $token = bin2hex(random_bytes(32));
+        $expiresAt = date('Y-m-d H:i:s', strtotime('+24 hours'));
+
+        try {
+            // Use transaction to ensure consistency
+            $userId = $this->db->transaction(function (Database $db) use ($email, $hashedPassword, $name, $phone, $token, $expiresAt) {
+                // Insert user
+                $data = [
+                    'email' => $email,
+                    'password' => $hashedPassword,
+                    'name' => $name,
+                    'phone' => $phone,
+                    'email_verification_token' => $token,
+                    'token_expires_at' => $expiresAt,
+                ];
+
+                $db->insert('users', $data);
+                $userId = (int)$db->getConnection()->lastInsertId();
+
+                // Also store token in email_verification_tokens table for better tracking
+                $tokenData = [
+                    'user_id' => $userId,
+                    'token' => $token,
+                    'expires_at' => $expiresAt,
+                ];
+                $db->insert('email_verification_tokens', $tokenData);
+
+                return $userId;
+            });
+
+            return $userId;
+        } catch (\Exception $e) {
+            error_log('User registration failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Get user by email address
+     */
+    public function getByEmail(string $email): ?array
     {
         return $this->db->selectOne(
-            "SELECT * FROM {$this->table} WHERE email = ?",
+            "SELECT * FROM {$this->table} WHERE email = ? LIMIT 1",
             [$email]
         );
     }
 
     /**
-     * Create new user
+     * Get user by ID
      */
-    public function create(array $data): int
+    public function getById(int $id): ?array
     {
-        if (isset($data['password'])) {
-            $data['password'] = password_hash($data['password'], PASSWORD_BCRYPT);
-        }
-
-        return $this->save($data);
+        return $this->find($id);
     }
 
     /**
-     * Update user
+     * Verify user email with verification token
      */
-    public function update(int $id, array $data): bool
+    public function verifyEmail(string $token): bool
     {
-        if (isset($data['password'])) {
-            $data['password'] = password_hash($data['password'], PASSWORD_BCRYPT);
-        }
+        try {
+            // Find token in email_verification_tokens table
+            $tokenRecord = $this->db->selectOne(
+                "SELECT * FROM {$this->tokenTable} WHERE token = ? AND expires_at > NOW() LIMIT 1",
+                [$token]
+            );
 
-        $data['id'] = $id;
-        $this->save($data);
-        return true;
+            if (!$tokenRecord) {
+                return false;
+            }
+
+            $userId = $tokenRecord['user_id'];
+
+            // Update user with verification timestamp
+            $this->db->update(
+                $this->table,
+                [
+                    'verified_at' => date('Y-m-d H:i:s'),
+                    'email_verification_token' => null,
+                    'token_expires_at' => null,
+                ],
+                ['id' => $userId]
+            );
+
+            // Delete the token record
+            $this->db->delete($this->tokenTable, ['id' => $tokenRecord['id']]);
+
+            return true;
+        } catch (\Exception $e) {
+            error_log('Email verification failed: ' . $e->getMessage());
+            return false;
+        }
     }
 
     /**
-     * Check if email exists
+     * Check if email is already registered
      */
     public function emailExists(string $email): bool
     {
-        return $this->findByEmail($email) !== null;
+        $result = $this->db->selectOne(
+            "SELECT id FROM {$this->table} WHERE email = ? LIMIT 1",
+            [$email]
+        );
+
+        return $result !== null;
     }
 
     /**
-     * Verify user password
+     * Check if user email is verified
      */
-    public function verifyPassword(string $email, string $password): bool
+    public function isEmailVerified(int $userId): bool
     {
-        $user = $this->findByEmail($email);
+        $user = $this->find($userId);
+        return $user !== null && $user['verified_at'] !== null;
+    }
 
-        if (!$user) {
+    /**
+     * Get user by verification token
+     */
+    public function getUserByToken(string $token): ?array
+    {
+        $tokenRecord = $this->db->selectOne(
+            "SELECT * FROM {$this->tokenTable} WHERE token = ? AND expires_at > NOW() LIMIT 1",
+            [$token]
+        );
+
+        if (!$tokenRecord) {
+            return null;
+        }
+
+        return $this->getById($tokenRecord['user_id']);
+    }
+
+    /**
+     * Resend verification email (generate new token)
+     */
+    public function regenerateVerificationToken(int $userId): string|false
+    {
+        try {
+            $user = $this->getById($userId);
+            if (!$user) {
+                return false;
+            }
+
+            $token = bin2hex(random_bytes(32));
+            $expiresAt = date('Y-m-d H:i:s', strtotime('+24 hours'));
+
+            // Delete old tokens
+            $this->db->delete($this->tokenTable, ['user_id' => $userId]);
+
+            // Update user with new token
+            $this->db->update(
+                $this->table,
+                [
+                    'email_verification_token' => $token,
+                    'token_expires_at' => $expiresAt,
+                ],
+                ['id' => $userId]
+            );
+
+            // Insert new token record
+            $this->db->insert($this->tokenTable, [
+                'user_id' => $userId,
+                'token' => $token,
+                'expires_at' => $expiresAt,
+            ]);
+
+            return $token;
+        } catch (\Exception $e) {
+            error_log('Token regeneration failed: ' . $e->getMessage());
             return false;
         }
-
-        return password_verify($password, $user['password']);
     }
 
     /**
-     * Activate user
+     * Get all unverified users (for admin purposes)
      */
-    public function activate(int $userId): bool
+    public function getUnverifiedUsers(int $page = 1, int $perPage = 10): array
     {
-        return $this->db->update($this->table, ['is_active' => 1], ['id' => $userId]);
-    }
-
-    /**
-     * Deactivate user
-     */
-    public function deactivate(int $userId): bool
-    {
-        return $this->db->update($this->table, ['is_active' => 0], ['id' => $userId]);
-    }
-
-    /**
-     * Update last login time
-     */
-    public function updateLastLogin(int $userId): bool
-    {
-        return $this->db->update($this->table, ['last_login' => date('Y-m-d H:i:s')], ['id' => $userId]);
-    }
-
-    /**
-     * Get active users count
-     */
-    public function countActiveUsers(): int
-    {
-        return $this->count(['is_active' => 1]);
-    }
-
-    /**
-     * Get users with roles
-     */
-    public function getUsersWithRoles(int $limit = null, int $offset = 0): array
-    {
-        $query = "SELECT u.*, GROUP_CONCAT(r.name) as roles
-                  FROM {$this->table} u
-                  LEFT JOIN user_roles ur ON u.id = ur.user_id
-                  LEFT JOIN roles r ON ur.role_id = r.id
-                  GROUP BY u.id
-                  ORDER BY u.name";
-
-        if ($limit !== null) {
-            $query .= " LIMIT ? OFFSET ?";
-            return $this->db->select($query, [$limit, $offset]);
-        }
-
-        return $this->db->select($query);
-    }
-
-    /**
-     * Get user roles
-     */
-    public function getRoles(int $userId): array
-    {
-        return $this->db->select(
-            "SELECT r.* FROM roles r
-             JOIN user_roles ur ON r.id = ur.role_id
-             WHERE ur.user_id = ?
-             ORDER BY r.name",
-            [$userId]
-        );
-    }
-
-    /**
-     * Get user permissions
-     */
-    public function getPermissions(int $userId): array
-    {
-        return $this->db->select(
-            "SELECT DISTINCT p.* FROM permissions p
-             JOIN role_permissions rp ON p.id = rp.permission_id
-             JOIN user_roles ur ON rp.role_id = ur.role_id
-             WHERE ur.user_id = ?
-             ORDER BY p.name",
-            [$userId]
-        );
+        $offset = ($page - 1) * $perPage;
+        $query = "SELECT * FROM {$this->table} WHERE verified_at IS NULL ORDER BY created_at DESC LIMIT ? OFFSET ?";
+        return $this->db->select($query, [$perPage, $offset]);
     }
 }
