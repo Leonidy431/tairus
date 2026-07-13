@@ -785,10 +785,229 @@ Week 13-16: Optimization + Mobile App
 
 ---
 
+## 🚀 РЕАЛИЗАЦИЯ MVP: ФАЗА 1 (НЕДЕЛИ 1-2)
+
+### Блок 1: Аутентификация & Безопасность (5 задач)
+
+#### TASK-001: User Registration with Email Verification
+**Статус:** In Progress  
+**Дедлайн:** Week 1  
+**Приоритет:** CRITICAL  
+**Описание:**
+- Создать таблицу `users` с полями: id, email, password (bcrypt), name, phone, verified_at, created_at
+- Реализовать UserRepository с методами: register(), getByEmail(), verifyEmail()
+- Создать Registration controller с валидацией email и пароля
+- Интегрировать отправку verification email через Mailer
+- Email verification token с TTL 24 часа
+- Защита от SQL injection и XSS
+
+**Acceptance Criteria:**
+- ✅ Пользователь может зарегистрироваться с уникальным email
+- ✅ Отправляется verification email
+- ✅ Email подтверждается по ссылке в письме
+- ✅ Непроверённый аккаунт не может логиниться
+- ✅ 4 unit теста покрывают flow
+
+---
+
+#### TASK-002: Secure Login/Logout System
+**Статус:** In Progress  
+**Дедлайн:** Week 1  
+**Приоритет:** CRITICAL  
+**Описание:**
+- Реализовать Login controller с rate limiting (5 попыток за 15 минут)
+- Session initialization с HTTPOnly, Secure, SameSite cookies
+- Password verification через password_verify()
+- Logout с session destruction
+- Реализовать "Remember Me" с secure tokens (7 дней)
+- CSRF protection на форме логина
+
+**Acceptance Criteria:**
+- ✅ Пользователь логинится с email/password
+- ✅ Неправильный пароль блокируется после 5 попыток
+- ✅ Session создаётся с безопасными флагами
+- ✅ Remember Me token безопасно хранится
+- ✅ 5 unit тестов покрывают все случаи
+
+---
+
+#### TASK-003: User Profile Management
+**Статус:** In Progress  
+**Дедлайн:** Week 1  
+**Приоритет:** HIGH  
+**Описание:**
+- Создать страницу профиля пользователя
+- Редактирование: name, phone, address, city, country, postal_code
+- Изменение пароля с верификацией старого пароля
+- Upload аватара с MIME validation (jpg, png, gif max 5MB)
+- История входов (login_history таблица)
+- Privacy settings
+
+**Acceptance Criteria:**
+- ✅ Пользователь может обновлять свой профиль
+- ✅ Пароль меняется после верификации старого
+- ✅ Аватар загружается безопасно
+- ✅ История входов сохраняется
+- ✅ 3 unit теста + 2 integration теста
+
+---
+
+#### TASK-004: Payment Gateway Integration (Stripe)
+**Статус:** In Progress  
+**Дедлайн:** Week 2  
+**Приоритет:** CRITICAL  
+**Описание:**
+- Интеграция Stripe API
+- Таблицы: `payment_methods`, `transactions`, `payment_logs`
+- PaymentRepository с методами: createPaymentIntent(), verifyPayment(), refund()
+- Webhook обработка для payment.success, payment.failed
+- PCI DSS compliance (no card storage, tokenization)
+- Логирование всех платежей для audit trail
+
+**Acceptance Criteria:**
+- ✅ Stripe payment form отображается
+- ✅ Платёж обрабатывается и сохраняется в БД
+- ✅ Webhook обновляет статус платежа
+- ✅ Рефунды обрабатываются корректно
+- ✅ 6 тестов покрывают платежный flow
+
+---
+
+#### TASK-005: Admin Panel Foundation
+**Статус:** In Progress  
+**Дедлайн:** Week 2  
+**Приоритет:** HIGH  
+**Описание:**
+- Создать Admin middleware для проверки роли (admin/moderator)
+- Dashboard с метриками: total_sales, total_users, total_products, conversion_rate
+- Navigation меню с разделами: Products, Orders, Users, Payments, Analytics, Settings
+- Role-based access control (RBAC) с таблицей roles и permissions
+- Audit log для всех admin действий
+- Basic styling для admin UI
+
+**Acceptance Criteria:**
+- ✅ Только админы могут открыть admin panel
+- ✅ Dashboard показывает key metrics
+- ✅ Menu содержит основные разделы
+- ✅ RBAC работает корректно
+- ✅ Все действия логируются
+- ✅ 4 unit теста покрывают access control
+
+---
+
+### Блок 2: Корзина & Платежи (Недели 3-4)
+
+#### TASK-006: Shopping Cart System
+**Статус:** Pending  
+**Дедлайн:** Week 3  
+**Приоритет:** CRITICAL  
+
+#### TASK-007: Checkout Flow
+**Статус:** Pending  
+**Дедлайн:** Week 3  
+**Приоритет:** CRITICAL  
+
+#### TASK-008: Order Management (Customer & Admin)
+**Статус:** Pending  
+**Дедлайн:** Week 4  
+**Приоритет:** CRITICAL  
+
+#### TASK-009: Invoice Generation
+**Статус:** Pending  
+**Дедлайн:** Week 4  
+**Приоритет:** HIGH  
+
+#### TASK-010: Refund & Return System
+**Статус:** Pending  
+**Дедлайн:** Week 4  
+**Приоритет:** HIGH  
+
+---
+
+### Блок 3: Каталог & Поиск (Недели 3-5)
+
+#### TASK-011: Advanced Product Search
+**Статус:** Pending  
+**Дедлайн:** Week 3  
+**Приоритет:** HIGH  
+
+#### TASK-012: Multi-Parameter Filtering
+**Статус:** Pending  
+**Дедлайн:** Week 4  
+**Приоритет:** HIGH  
+
+#### TASK-013: Product Image Gallery
+**Статус:** Pending  
+**Дедлайн:** Week 3  
+**Приоритет:** MEDIUM  
+
+#### TASK-014: Product Variants & Options
+**Статус:** Pending  
+**Дедлайн:** Week 4  
+**Приоритет:** MEDIUM  
+
+#### TASK-015: Inventory Management
+**Статус:** Pending  
+**Дедлайн:** Week 5  
+**Приоритет:** HIGH  
+
+---
+
+### Блок 4: Отзывы & Рейтинги (Недели 5-6)
+
+#### TASK-016: Product Review System
+**Статус:** Pending  
+**Дедлайн:** Week 5  
+**Приоритет:** HIGH  
+
+#### TASK-017: Review Moderation
+**Статус:** Pending  
+**Дедлайн:** Week 5  
+**Приоритет:** HIGH  
+
+#### TASK-018: Seller Ratings
+**Статус:** Pending  
+**Дедлайн:** Week 6  
+**Приоритет:** MEDIUM  
+
+#### TASK-019: Review Sorting & Filtering
+**Статус:** Pending  
+**Дедлайн:** Week 6  
+**Приоритет:** MEDIUM  
+
+---
+
+### Блок 5: Wishlist (Недели 5-6)
+
+#### TASK-020: Save Items to Wishlist
+**Статус:** Pending  
+**Дедлайн:** Week 5  
+**Приоритет:** MEDIUM  
+
+#### TASK-021: Favorite Sellers
+**Статус:** Pending  
+**Дедлайн:** Week 6  
+**Приоритет:** MEDIUM  
+
+#### TASK-022: Price Drop Alerts
+**Статус:** Pending  
+**Дедлайн:** Week 6  
+**Приоритет:** MEDIUM  
+
+---
+
+### Блок 6-8: Уведомления, SEO, Аналитика (Недели 6-8)
+
+#### TASK-023 to TASK-033: Remaining Features
+**Статус:** Pending  
+**Дедлайн:** Weeks 6-8  
+
+---
+
 ## 📞 КОНТАКТЫ & ОТВЕТСТВЕННЫЕ
 
 - **Product Manager:** [ПМ]
-- **Lead Backend:** [Backend Lead]
+- **Lead Backend:** Claude Code
 - **Lead Frontend:** [Frontend Lead]
 - **QA Lead:** [QA Lead]
 - **DevOps:** [DevOps]
