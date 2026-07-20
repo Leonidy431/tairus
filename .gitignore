@@ -1,0 +1,5 @@
+# Archive files from old system - not tracked
+NCNDA*.zip
+extracted/
+*.rar
+*.part
