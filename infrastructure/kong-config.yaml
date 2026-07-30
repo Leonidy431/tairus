@@ -1,0 +1,370 @@
+# Kong API Gateway Configuration
+# Rate limiting, DDoS protection, and abuse prevention
+# Deploy with: kong config init kong.conf && kong start
+
+_format_version: "3.0"
+_transform: true
+
+# Plugins to enforce globally
+plugins:
+  - name: request-id
+    config:
+      header_name: X-Request-ID
+      header_type: uuid
+
+  - name: cors
+    config:
+      origins: "*"
+      methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+      credentials: true
+      max_age: 3600
+
+  - name: request-size-limiting
+    config:
+      allowed_payload_size: 5  # MB
+
+# Rate Limiting & Abuse Prevention Rules
+services:
+  # Auth Service
+  - name: auth-service
+    url: http://auth-service:8000
+    routes:
+      - name: login
+        paths:
+          - /auth/login
+        methods: [POST]
+        plugins:
+          # Hard rate limit on login (brute force protection)
+          - name: rate-limiting
+            config:
+              minute: 5              # 5 attempts per minute
+              hour: 50               # 50 per hour per IP
+              policy: local
+              fault_tolerant: true
+              hide_client_header: false
+              error_code: 429
+              error_message: "API rate limit exceeded"
+
+          # Bot detection before rate limiting
+          - name: bot-detection
+            config:
+              whitelist: ""
+              blacklist: ""
+
+      - name: register
+        paths:
+          - /auth/register
+        methods: [POST]
+        plugins:
+          # Prevent account creation spam
+          - name: rate-limiting
+            config:
+              minute: 10             # 10 registrations per minute per IP
+              hour: 100
+              policy: local
+
+          # Require CAPTCHA for registration
+          - name: request-transformer
+            config:
+              add:
+                headers:
+                  - "X-Require-Captcha: true"
+
+      - name: refresh-token
+        paths:
+          - /auth/refresh
+        methods: [POST]
+        plugins:
+          - name: rate-limiting
+            config:
+              second: 5
+              minute: 100
+              policy: local
+
+      - name: mfa-setup
+        paths:
+          - /auth/mfa/setup
+          - /auth/mfa/verify
+        methods: [POST]
+        plugins:
+          # MFA requests should be slow (can't brute force)
+          - name: rate-limiting
+            config:
+              second: 1              # 1 request per second only!
+              minute: 30
+              policy: local
+
+  # Catalog Service
+  - name: catalog-service
+    url: http://catalog-service:8000
+    routes:
+      - name: search
+        paths:
+          - /catalog/search
+        methods: [GET]
+        plugins:
+          # Protect search from bot scraping
+          - name: rate-limiting
+            config:
+              second: 10             # 10 searches per second
+              minute: 600            # 600 per minute = reasonable
+              policy: redis          # Use Redis for distributed rate limiting
+              redis:
+                host: redis
+                port: 6379
+              error_code: 429
+
+          # Monitor for scraping patterns
+          - name: correlation-id
+            config:
+              header_name: X-Correlation-ID
+              generator: uuid#random
+
+      - name: get-product
+        paths:
+          - /catalog/products/:id
+        methods: [GET]
+        plugins:
+          - name: rate-limiting
+            config:
+              second: 50
+              minute: 5000
+
+      - name: bulk-upload
+        paths:
+          - /catalog/bulk-upload
+        methods: [POST]
+        plugins:
+          # STRICT: Only 1 bulk upload per minute per supplier
+          - name: rate-limiting
+            config:
+              minute: 1              # 1 upload max per minute
+              burst: 3               # Allow burst of 3
+              policy: redis
+
+          # File size limit
+          - name: request-size-limiting
+            config:
+              allowed_payload_size: 50  # 50 MB max for bulk upload
+
+          # Require authentication
+          - name: key-auth
+            config:
+              key_names: ["api_key", "Authorization"]
+
+      - name: list-categories
+        paths:
+          - /catalog/categories
+        methods: [GET]
+        plugins:
+          - name: rate-limiting
+            config:
+              second: 100
+              minute: 10000
+
+  # Payment Service (Most Critical)
+  - name: payment-service
+    url: http://payment-service:8000
+    routes:
+      - name: create-order
+        paths:
+          - /payments/orders
+        methods: [POST]
+        plugins:
+          # Strict rate limit for payments (prevent reservation bombs)
+          - name: rate-limiting
+            config:
+              second: 5              # 5 orders per second max
+              minute: 300            # 300 per minute max
+              hour: 10000
+              policy: redis
+              error_code: 429
+
+          # Require strong auth (JWT)
+          - name: jwt
+            config:
+              secret_is_base64: false
+              key_claim_name: "sub"
+              claims_to_verify: ["exp"]
+
+          # Fraud detection middleware
+          - name: request-transformer
+            config:
+              add:
+                headers:
+                  - "X-Require-Fraud-Check: true"
+
+      - name: process-payment
+        paths:
+          - /payments/process
+        methods: [POST]
+        plugins:
+          # Prevent double-charging
+          - name: rate-limiting
+            config:
+              second: 1              # 1 payment per second per user
+              minute: 30
+              policy: redis
+
+          # Require idempotency key
+          - name: request-transformer
+            config:
+              add:
+                headers:
+                  - "X-Require-Idempotency-Key: true"
+
+      - name: refund
+        paths:
+          - /payments/refund
+        methods: [POST]
+        plugins:
+          - name: rate-limiting
+            config:
+              minute: 60             # Limited refunds
+              policy: redis
+
+  # Messaging Service
+  - name: messaging-service
+    url: http://messaging-service:8000
+    routes:
+      - name: send-message
+        paths:
+          - /messages/send
+        methods: [POST]
+        plugins:
+          # Prevent spam messages
+          - name: rate-limiting
+            config:
+              second: 10
+              minute: 500            # 500 messages per minute
+              policy: redis
+
+      - name: websocket
+        paths:
+          - /ws
+        methods: [GET, POST]
+        plugins:
+          # WebSocket connections are limited
+          - name: rate-limiting
+            config:
+              second: 100
+              minute: 10000
+              policy: redis
+
+  # Logistics Service
+  - name: logistics-service
+    url: http://logistics-service:8000
+    routes:
+      - name: create-shipment
+        paths:
+          - /shipments
+        methods: [POST]
+        plugins:
+          - name: rate-limiting
+            config:
+              second: 10
+              minute: 1000
+              policy: redis
+
+  # Compliance Service (Must be strict)
+  - name: compliance-service
+    url: http://compliance-service:8000
+    routes:
+      - name: kyc-check
+        paths:
+          - /compliance/kyc
+        methods: [POST]
+        plugins:
+          # KYC checks are async, rate limit requests
+          - name: rate-limiting
+            config:
+              minute: 100            # 100 KYC checks per minute
+              hour: 5000
+              policy: redis
+
+      - name: sanctions-screening
+        paths:
+          - /compliance/sanctions-check
+        methods: [POST]
+        plugins:
+          # OFAC screening must be quick but rate-limited
+          - name: rate-limiting
+            config:
+              second: 50
+              minute: 10000
+              policy: redis
+
+# IP-Based Rate Limiting & Blocking
+upstreams:
+  - name: auth-service
+    targets:
+      - target: auth-service:8000
+    healthchecks:
+      active:
+        healthy:
+          interval: 10
+          successes: 2
+        unhealthy:
+          interval: 10
+          failures: 3
+        http_path: /health
+
+  - name: payment-service
+    targets:
+      - target: payment-service:8000
+    healthchecks:
+      active:
+        healthy:
+          interval: 5
+          successes: 2
+        unhealthy:
+          interval: 5
+          failures: 2
+        http_path: /health
+
+  - name: catalog-service
+    targets:
+      - target: catalog-service:8000
+    healthchecks:
+      active:
+        healthy:
+          interval: 10
+          successes: 2
+        unhealthy:
+          interval: 10
+          failures: 3
+        http_path: /health
+
+# Global IP Blocking (GeoIP-based)
+consumers:
+  # Add suspicious IPs/countries
+  - username: blocked-ips
+    acls:
+      - group: blocked
+
+# Rate Limiting Thresholds Summary:
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Service         Endpoint                Per-Second    Per-Minute    Per-Hour
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Auth            /login                  -             5             50
+#                 /register               -             10            100
+#                 /mfa                    1             30            N/A
+# Catalog         /search                 10            600           N/A
+#                 /products/:id           50            5000          N/A
+#                 /bulk-upload            -             1             N/A
+# Payment         /orders                 5             300           10000
+#                 /process                1             30            N/A
+#                 /refund                 -             60            N/A
+# Messaging       /send                   10            500           N/A
+#                 /ws                     100           10000         N/A
+# Logistics       /shipments              10            1000          N/A
+# Compliance      /kyc                    -             100           5000
+#                 /sanctions              50            10000         N/A
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Monitoring & Alerts
+# Alert when:
+# 1. Any endpoint exceeds rate limit by > 20% (adjust thresholds)
+# 2. 429 error rate > 5% (indicates bot activity)
+# 3. Same IP hits multiple rate limits (coordinated attack)
+# 4. Unusual geographic patterns (users from 5 countries in 1 minute)

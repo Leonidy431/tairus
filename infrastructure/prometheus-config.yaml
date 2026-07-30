@@ -1,0 +1,126 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: 'production'
+    region: 'global'
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+rule_files:
+  - '/etc/prometheus/rules/*.yml'
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Auth Service metrics
+  - job_name: 'auth-service'
+    static_configs:
+      - targets: ['auth-service:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+
+  # Catalog Service metrics
+  - job_name: 'catalog-service'
+    static_configs:
+      - targets: ['catalog-service:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # Payment Service metrics (CRITICAL - most important)
+  - job_name: 'payment-service'
+    static_configs:
+      - targets: ['payment-service:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 5s  # More frequent for payment security
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+
+  # Messaging Service metrics
+  - job_name: 'messaging-service'
+    static_configs:
+      - targets: ['messaging-service:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # Logistics Service metrics
+  - job_name: 'logistics-service'
+    static_configs:
+      - targets: ['logistics-service:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # Compliance Service metrics (CRITICAL - regulatory)
+  - job_name: 'compliance-service'
+    static_configs:
+      - targets: ['compliance-service:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  # Notification Service metrics
+  - job_name: 'notification-service'
+    static_configs:
+      - targets: ['notification-service:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # PostgreSQL exporter
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+
+  # MongoDB exporter
+  - job_name: 'mongodb'
+    static_configs:
+      - targets: ['mongodb-exporter:9216']
+    scrape_interval: 30s
+
+  # Redis exporter
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+    scrape_interval: 15s
+
+  # Elasticsearch exporter
+  - job_name: 'elasticsearch'
+    static_configs:
+      - targets: ['elasticsearch-exporter:9114']
+    scrape_interval: 30s
+
+  # Kafka exporter
+  - job_name: 'kafka'
+    static_configs:
+      - targets: ['kafka-exporter:9308']
+    scrape_interval: 30s
+
+  # Kong API Gateway metrics
+  - job_name: 'kong'
+    static_configs:
+      - targets: ['kong:8001']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # Kubernetes metrics (if using K8s)
+  - job_name: 'kubernetes-apiservers'
+    kubernetes_sd_configs:
+      - role: endpoints
+    scheme: https
+    tls_config:
+      ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+        action: keep
+        regex: default;kubernetes;https

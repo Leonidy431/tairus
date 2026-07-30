@@ -1,0 +1,286 @@
+groups:
+  - name: payment_service_alerts
+    interval: 30s
+    rules:
+      # SEV-1: Payment service error rate critical
+      - alert: PaymentServiceErrorRateCritical
+        expr: rate(payment_service_errors_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          service: payment-service
+        annotations:
+          summary: "Payment Service Error Rate > 5%"
+          description: "Payment service error rate is {{ $value | humanizePercentage }} for the last 5 minutes. Customer transactions are failing."
+          runbook: "docs/RUNBOOKS.md#1-payment-service-down"
+
+      # SEV-1: Payment processing latency spike
+      - alert: PaymentProcessingLatencyHigh
+        expr: histogram_quantile(0.99, payment_service_process_duration_seconds) > 5
+        for: 3m
+        labels:
+          severity: critical
+          service: payment-service
+        annotations:
+          summary: "Payment Processing P99 Latency > 5s"
+          description: "Payment processing 99th percentile latency is {{ $value }}s. Transactions are timing out."
+
+      # Payment fraud detector blocking too many transactions
+      - alert: FraudDetectorBlockRateHigh
+        expr: rate(fraud_detector_blocks_total[5m]) / rate(fraud_detector_checks_total[5m]) > 0.20
+        for: 2m
+        labels:
+          severity: warning
+          service: payment-service
+        annotations:
+          summary: "Fraud Detector Blocking > 20% of Transactions"
+          description: "Fraud detector block rate is {{ $value | humanizePercentage }}. May indicate false positives or actual attack."
+
+  - name: database_alerts
+    interval: 30s
+    rules:
+      # SEV-1: PostgreSQL replication lag critical
+      - alert: PostgreSQLReplicationLagCritical
+        expr: pg_replication_lag_seconds > 60
+        for: 1m
+        labels:
+          severity: critical
+          service: postgres
+        annotations:
+          summary: "PostgreSQL Replication Lag > 60 seconds"
+          description: "Primary-replica replication lag is {{ $value }}s. Read replicas showing stale data."
+          runbook: "docs/RUNBOOKS.md#2-postgresql-replication-lag"
+
+      # SEV-2: PostgreSQL connection pool exhaustion
+      - alert: PostgreSQLConnectionPoolWarning
+        expr: pg_stat_activity_count{state="active"} > 80
+        for: 2m
+        labels:
+          severity: warning
+          service: postgres
+        annotations:
+          summary: "PostgreSQL Active Connections > 80"
+          description: "PostgreSQL has {{ $value }} active connections. Connection pool is near limit."
+
+      # SEV-2: Database disk usage high
+      - alert: DatabaseDiskUsageHigh
+        expr: pg_database_size_bytes / node_filesystem_size_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          service: postgres
+        annotations:
+          summary: "PostgreSQL Disk Usage > 85%"
+          description: "PostgreSQL disk usage is {{ $value | humanizePercentage }}. Risk of disk full."
+
+  - name: kafka_alerts
+    interval: 30s
+    rules:
+      # SEV-1: Kafka broker down
+      - alert: KafkaBrokerDown
+        expr: kafka_broker_info == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: kafka
+        annotations:
+          summary: "Kafka Broker Down"
+          description: "Kafka broker {{ $labels.broker_id }} is unreachable."
+          runbook: "docs/RUNBOOKS.md#3-kafka-broker-down"
+
+      # SEV-2: Kafka consumer lag high
+      - alert: KafkaConsumerLagHigh
+        expr: kafka_consumer_lag > 100000
+        for: 2m
+        labels:
+          severity: warning
+          service: kafka
+        annotations:
+          summary: "Kafka Consumer Lag > 100k Messages"
+          description: "Kafka consumer group {{ $labels.group }} lag is {{ $value }} messages for topic {{ $labels.topic }}."
+
+  - name: elasticsearch_alerts
+    interval: 30s
+    rules:
+      # SEV-2: Elasticsearch cluster health degraded
+      - alert: ElasticsearchClusterHealthRed
+        expr: elasticsearch_cluster_health_status{color="red"} == 1
+        for: 2m
+        labels:
+          severity: warning
+          service: elasticsearch
+        annotations:
+          summary: "Elasticsearch Cluster Health: RED"
+          description: "Elasticsearch cluster is in RED status. Some shards are unassigned."
+          runbook: "docs/RUNBOOKS.md#4-elasticsearch-index-corruption"
+
+      # SEV-2: Elasticsearch disk usage critical
+      - alert: ElasticsearchDiskUsageCritical
+        expr: elasticsearch_disk_available_bytes / elasticsearch_disk_total_bytes < 0.15
+        for: 2m
+        labels:
+          severity: warning
+          service: elasticsearch
+        annotations:
+          summary: "Elasticsearch Disk Usage > 85%"
+          description: "Elasticsearch disk available is {{ $value | humanizePercentage }}. Risk of allocation failures."
+
+  - name: memory_alerts
+    interval: 30s
+    rules:
+      # SEV-2: Pod memory usage critical
+      - alert: PodMemoryUsageHigh
+        expr: container_memory_usage_bytes / container_spec_memory_limit_bytes > 0.80
+        for: 3m
+        labels:
+          severity: warning
+          service: kubernetes
+        annotations:
+          summary: "Pod Memory Usage > 80%"
+          description: "Pod {{ $labels.pod_name }} memory usage is {{ $value | humanizePercentage }} of limit."
+          runbook: "docs/RUNBOOKS.md#5-memory-leak-in-catalog-service"
+
+      # Memory trending towards OOMKill
+      - alert: PodMemoryTrendingHigh
+        expr: rate(container_memory_usage_bytes[10m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: kubernetes
+        annotations:
+          summary: "Pod {{ $labels.pod_name }} Memory Trending Up"
+          description: "Memory usage increasing {{ $value }}B/min. May hit limit soon."
+
+  - name: api_gateway_alerts
+    interval: 30s
+    rules:
+      # SEV-3: High rate limit violations
+      - alert: HighRateLimitViolations
+        expr: rate(kong_http_status{status=~"429"}[5m]) > 0.01
+        for: 2m
+        labels:
+          severity: warning
+          service: kong
+        annotations:
+          summary: "Rate Limit Violations > 1% of Traffic"
+          description: "Kong is returning 429 status for {{ $value | humanizePercentage }} of requests."
+          runbook: "docs/RUNBOOKS.md#8-ddos-attack"
+
+      # SEV-3: High error rate
+      - alert: APIHighErrorRate
+        expr: rate(kong_http_status{status=~"5.."}[5m]) > 0.05
+        for: 3m
+        labels:
+          severity: warning
+          service: kong
+        annotations:
+          summary: "API Error Rate > 5%"
+          description: "Kong reporting {{ $value | humanizePercentage }} 5xx errors."
+
+  - name: business_metrics_alerts
+    interval: 60s
+    rules:
+      # GMV tracking (informational)
+      - alert: GMVDailyUpdate
+        expr: increase(gmv_total[1d]) > 0
+        for: 1h
+        labels:
+          severity: info
+          service: analytics
+        annotations:
+          summary: "Daily GMV: ${{ $value }}"
+          description: "Gross Merchandise Value for today is ${{ $value }}"
+
+      # Conversion funnel monitoring
+      - alert: ConversionRateLow
+        expr: (increase(orders_completed[1h]) / increase(catalog_searches[1h])) < 0.01
+        for: 1h
+        labels:
+          severity: info
+          service: analytics
+        annotations:
+          summary: "Search-to-Order Conversion < 1%"
+          description: "Conversion rate dropped to {{ $value | humanizePercentage }}"
+
+      # Customer churn warning
+      - alert: ChurnRateHigh
+        expr: increase(users_churned[7d]) / avg_over_time(active_users[7d]) > 0.05
+        for: 1h
+        labels:
+          severity: warning
+          service: analytics
+        annotations:
+          summary: "Weekly Churn Rate > 5%"
+          description: "Customer churn rate is {{ $value | humanizePercentage }}"
+
+  - name: compliance_alerts
+    interval: 30s
+    rules:
+      # KYC verification failures
+      - alert: KYCVerificationFailureRate
+        expr: rate(kyc_verification_failures_total[5m]) / rate(kyc_verification_attempts_total[5m]) > 0.10
+        for: 5m
+        labels:
+          severity: warning
+          service: compliance-service
+        annotations:
+          summary: "KYC Verification Failure Rate > 10%"
+          description: "KYC verification is failing at {{ $value | humanizePercentage }} rate"
+
+      # Sanctions screening false positives
+      - alert: SanctionsScreeningFalsePositives
+        expr: rate(sanctions_screening_false_positives_total[1h]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          service: compliance-service
+        annotations:
+          summary: "Sanctions Screening False Positives > 5/hour"
+          description: "Sanctions screening generating too many false positives"
+
+      # AML risk score alerts
+      - alert: AMLHighRiskDetected
+        expr: increase(aml_high_risk_transactions_total[1h]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          service: compliance-service
+        annotations:
+          summary: "AML: > 10 High-Risk Transactions Detected"
+          description: "AML system detected {{ $value }} high-risk transactions in last hour"
+
+  - name: infrastructure_alerts
+    interval: 30s
+    rules:
+      # Disk space critical
+      - alert: DiskSpaceCritical
+        expr: node_filesystem_avail_bytes{fstype=~"ext4|xfs"} / node_filesystem_size_bytes < 0.15
+        for: 5m
+        labels:
+          severity: critical
+          service: infrastructure
+        annotations:
+          summary: "Disk Space < 15%"
+          description: "{{ $labels.mountpoint }} has only {{ $value | humanizePercentage }} disk space available"
+
+      # CPU usage high
+      - alert: CPUUsageHigh
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 5m
+        labels:
+          severity: warning
+          service: infrastructure
+        annotations:
+          summary: "CPU Usage > 90%"
+          description: "{{ $labels.instance }} CPU usage is {{ $value | humanize }}%"
+
+      # Network errors
+      - alert: NetworkErrorsHigh
+        expr: rate(node_network_receive_errs_total[5m]) > 100
+        for: 2m
+        labels:
+          severity: warning
+          service: infrastructure
+        annotations:
+          summary: "Network Errors Detected"
+          description: "{{ $labels.device }} receiving {{ $value }}errors/sec"
