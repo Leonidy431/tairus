@@ -898,17 +898,19 @@ Week 13-16: Optimization + Mobile App
 ### Блок 2: Корзина & Платежи (Недели 3-4)
 
 #### TASK-006: Shopping Cart System
-**Статус:** Pending  
+**Статус:** ✅ COMPLETED (2026-07-30)
 **Дедлайн:** Week 3  
 **Приоритет:** CRITICAL  
+**Реализация:** CartController, CartRepository, session-based guest carts, CSRF-protected operations
 
 #### TASK-007: Checkout Flow
-**Статус:** Pending  
+**Статус:** ✅ COMPLETED (2026-07-30)
 **Дедлайн:** Week 3  
 **Приоритет:** CRITICAL  
+**Реализация:** CheckoutController, multi-step checkout, order creation from cart
 
 #### TASK-008: Order Management (Customer & Admin)
-**Статус:** Pending  
+**Статус:** In Progress  
 **Дедлайн:** Week 4  
 **Приоритет:** CRITICAL  
 
@@ -937,9 +939,10 @@ Week 13-16: Optimization + Mobile App
 **Приоритет:** HIGH  
 
 #### TASK-013: Product Image Gallery
-**Статус:** Pending  
+**Статус:** ✅ COMPLETED (2026-07-30)
 **Дедлайн:** Week 3  
 **Приоритет:** MEDIUM  
+**Реализация:** ImageOptimizer, UploadsRepository, multi-size images, WebP conversion, drag-and-drop reordering  
 
 #### TASK-014: Product Variants & Options
 **Статус:** Pending  
