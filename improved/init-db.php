@@ -205,6 +205,20 @@ try {
     )");
     echo "✅ products table created\n";
 
+    // Uploads table for product images
+    $db->exec("CREATE TABLE IF NOT EXISTS uploads (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id INTEGER NOT NULL,
+        file_path TEXT NOT NULL,
+        file_name TEXT NOT NULL,
+        file_size INTEGER,
+        mime_type TEXT,
+        is_primary INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+    )");
+    echo "✅ uploads table created\n";
+
     // News table
     $db->exec("CREATE TABLE IF NOT EXISTS news (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -227,6 +241,63 @@ try {
     )");
     echo "✅ subscriptions table created\n";
 
+
+    // Shopping Carts (for authenticated users)
+    $db->exec("CREATE TABLE IF NOT EXISTS carts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        product_id INTEGER NOT NULL,
+        quantity INTEGER DEFAULT 1,
+        added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+    )");
+    echo "✅ carts table created\n";
+
+    // Cart Sessions (for guest users)
+    $db->exec("CREATE TABLE IF NOT EXISTS cart_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT UNIQUE NOT NULL,
+        cart_data TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )");
+    echo "✅ cart_sessions table created\n";
+
+    // Orders
+    $db->exec("CREATE TABLE IF NOT EXISTS orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        order_number TEXT UNIQUE NOT NULL,
+        total DECIMAL(10, 2) NOT NULL,
+        subtotal DECIMAL(10, 2),
+        shipping_cost DECIMAL(10, 2) DEFAULT 0,
+        tax DECIMAL(10, 2) DEFAULT 0,
+        discount DECIMAL(10, 2) DEFAULT 0,
+        status TEXT DEFAULT 'pending',
+        billing_address TEXT,
+        shipping_address TEXT,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )");
+    echo "✅ orders table created\n";
+
+    // Order Items
+    $db->exec("CREATE TABLE IF NOT EXISTS order_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        quantity INTEGER DEFAULT 1,
+        price DECIMAL(10, 2) NOT NULL,
+        subtotal DECIMAL(10, 2) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
+    )");
+    echo "✅ order_items table created\n";
     echo "\n✨ Database initialized successfully!\n";
     echo "📁 Database file: $dbPath\n";
 
