@@ -327,27 +327,42 @@ CREATE TABLE IF NOT EXISTS `cart_sessions` (
   INDEX `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Product Uploads/Images Table
-CREATE TABLE IF NOT EXISTS `uploads` (
+-- Orders Table
+CREATE TABLE IF NOT EXISTS `orders` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
-  `product_id` INT NOT NULL,
-  `original_filename` VARCHAR(255) NOT NULL,
-  `file_path` VARCHAR(500) NOT NULL,
-  `thumbnail_path` VARCHAR(500),
-  `medium_path` VARCHAR(500),
-  `large_path` VARCHAR(500),
-  `webp_path` VARCHAR(500),
-  `webp_medium_path` VARCHAR(500),
-  `file_size` INT,
-  `mime_type` VARCHAR(50),
-  `is_primary` BOOLEAN DEFAULT 0,
-  `alt_text` VARCHAR(255),
+  `user_id` INT NOT NULL,
+  `order_number` VARCHAR(255) UNIQUE NOT NULL,
+  `total` DECIMAL(10, 2) NOT NULL,
+  `subtotal` DECIMAL(10, 2),
+  `shipping_cost` DECIMAL(10, 2) DEFAULT 0,
+  `tax` DECIMAL(10, 2) DEFAULT 0,
+  `discount` DECIMAL(10, 2) DEFAULT 0,
+  `status` VARCHAR(50) DEFAULT 'pending',
+  `billing_address` LONGTEXT,
+  `shipping_address` LONGTEXT,
+  `notes` LONGTEXT,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE CASCADE,
-  INDEX `idx_product_id` (`product_id`),
-  INDEX `idx_is_primary` (`is_primary`),
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+  INDEX `idx_user_id` (`user_id`),
+  INDEX `idx_order_number` (`order_number`),
+  INDEX `idx_status` (`status`),
   INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Order Items Table
+CREATE TABLE IF NOT EXISTS `order_items` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `order_id` INT NOT NULL,
+  `product_id` INT NOT NULL,
+  `quantity` INT DEFAULT 1,
+  `price` DECIMAL(10, 2) NOT NULL,
+  `subtotal` DECIMAL(10, 2) NOT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`order_id`) REFERENCES `orders`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE RESTRICT,
+  INDEX `idx_order_id` (`order_id`),
+  INDEX `idx_product_id` (`product_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Insert sample configuration

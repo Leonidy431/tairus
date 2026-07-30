@@ -227,50 +227,6 @@ try {
     )");
     echo "✅ subscriptions table created\n";
 
-    // Shopping Cart Table
-    $db->exec("CREATE TABLE IF NOT EXISTS carts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        product_id INTEGER NOT NULL,
-        quantity INTEGER DEFAULT 1,
-        added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id),
-        FOREIGN KEY (product_id) REFERENCES products(id)
-    )");
-    echo "✅ carts table created\n";
-
-    // Cart Sessions Table (for guest users)
-    $db->exec("CREATE TABLE IF NOT EXISTS cart_sessions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id TEXT UNIQUE NOT NULL,
-        cart_data TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )");
-    echo "✅ cart_sessions table created\n";
-
-    // Product Uploads/Images Table
-    $db->exec("CREATE TABLE IF NOT EXISTS uploads (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        product_id INTEGER NOT NULL,
-        original_filename TEXT NOT NULL,
-        file_path TEXT NOT NULL,
-        thumbnail_path TEXT,
-        medium_path TEXT,
-        large_path TEXT,
-        webp_path TEXT,
-        webp_medium_path TEXT,
-        file_size INTEGER,
-        mime_type TEXT,
-        is_primary INTEGER DEFAULT 0,
-        alt_text TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (product_id) REFERENCES products(id)
-    )");
-    echo "✅ uploads table created\n";
-
     echo "\n✨ Database initialized successfully!\n";
     echo "📁 Database file: $dbPath\n";
 
