@@ -301,6 +301,55 @@ CREATE TABLE IF NOT EXISTS `payment_logs` (
   FOREIGN KEY (`transaction_id`) REFERENCES `transactions`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Shopping Cart Table
+CREATE TABLE IF NOT EXISTS `carts` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT,
+  `product_id` INT NOT NULL,
+  `quantity` INT DEFAULT 1,
+  `added_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE CASCADE,
+  INDEX `idx_user_id` (`user_id`),
+  INDEX `idx_product_id` (`product_id`),
+  INDEX `idx_user_product` (`user_id`, `product_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Cart Sessions Table (for guest users)
+CREATE TABLE IF NOT EXISTS `cart_sessions` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `session_id` VARCHAR(255) UNIQUE NOT NULL,
+  `cart_data` LONGTEXT,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_session_id` (`session_id`),
+  INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Product Uploads/Images Table
+CREATE TABLE IF NOT EXISTS `uploads` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `product_id` INT NOT NULL,
+  `original_filename` VARCHAR(255) NOT NULL,
+  `file_path` VARCHAR(500) NOT NULL,
+  `thumbnail_path` VARCHAR(500),
+  `medium_path` VARCHAR(500),
+  `large_path` VARCHAR(500),
+  `webp_path` VARCHAR(500),
+  `webp_medium_path` VARCHAR(500),
+  `file_size` INT,
+  `mime_type` VARCHAR(50),
+  `is_primary` BOOLEAN DEFAULT 0,
+  `alt_text` VARCHAR(255),
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE CASCADE,
+  INDEX `idx_product_id` (`product_id`),
+  INDEX `idx_is_primary` (`is_primary`),
+  INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Insert sample configuration
 INSERT IGNORE INTO `configuration` (`key`, `value`, `type`, `description`) VALUES
   ('site_name', 'Art Gallery', 'string', 'Website name'),

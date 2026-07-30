@@ -17,6 +17,7 @@ use App\Security\CsrfToken;
 use App\File\FileUploader;
 use App\Mail\Mailer;
 use App\Controllers\PaymentController;
+use App\Controllers\CartController;
 
 // Initialize services
 $db = $GLOBALS['db'];
@@ -25,6 +26,7 @@ $config = $GLOBALS['config'];
 $productRepo = new ProductRepository($db);
 $newsRepo = new NewsRepository($db);
 $subscriptionRepo = new SubscriptionRepository($db);
+$cartController = new CartController($db);
 
 // Get request parameters safely
 $action = Sanitizer::string($_GET['action'] ?? 'home');
@@ -50,9 +52,18 @@ $data = [
     'per_page' => $config['pagination']['pictures_per_page'],
 ];
 
+// Handle AJAX cart operations
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_action'])) {
+    handleCartAjaxAction($cartController, $_POST['cart_action']);
+}
+
 // Route handling
 try {
     switch ($action) {
+        case 'cart':
+            $data = array_merge($data, $cartController->viewCart());
+            break;
+
         case 'products':
             handleProductsAction($productRepo, $data, $category, $searchTerm, $page, $config);
             break;
@@ -88,6 +99,12 @@ try {
     }
     $data['error'] = 'An error occurred while processing your request';
 }
+
+// Get cart data for header display
+$cartMiniData = $cartController->getMiniCart();
+$data['cart_item_count'] = $cartMiniData['item_count'];
+$data['cart_total'] = $cartMiniData['total'];
+$data['cart_preview_items'] = $cartMiniData['preview_items'];
 
 // Render response
 renderPage($action, $data);
@@ -286,7 +303,30 @@ function renderPage(string $action, array $data): void
                     <a href="?action=products">Products</a>
                     <a href="?action=news">News</a>
                     <a href="?action=contact">Contact</a>
+                    <a href="?action=cart" class="cart-link">
+                        Cart
+                        <?php if ($data['cart_item_count'] > 0): ?>
+                            <span class="cart-badge"><?php echo $data['cart_item_count']; ?></span>
+                        <?php endif; ?>
+                    </a>
                 </nav>
+                <?php if ($data['cart_item_count'] > 0): ?>
+                    <div class="mini-cart">
+                        <div class="mini-cart-header">Cart Preview</div>
+                        <div class="mini-cart-items">
+                            <?php foreach ($data['cart_preview_items'] as $item): ?>
+                                <div class="mini-cart-item">
+                                    <strong><?php echo htmlspecialchars($item['title'] ?? ''); ?></strong>
+                                    <span class="quantity">x<?php echo $item['quantity']; ?></span>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <div class="mini-cart-footer">
+                            <div class="mini-cart-total">Total: $<?php echo number_format($data['cart_total'], 2); ?></div>
+                            <a href="?action=cart" class="btn btn-small">View Cart</a>
+                        </div>
+                    </div>
+                <?php endif; ?>
             </div>
         </header>
 
@@ -309,6 +349,9 @@ function renderPage(string $action, array $data): void
                     break;
                 case 'product':
                     renderProductDetail($data);
+                    break;
+                case 'cart':
+                    renderCart($data);
                     break;
                 case 'news':
                     renderNews($data);
@@ -421,6 +464,20 @@ function renderProductDetail(array $data): void
         <?php if (!empty($product['artist'])): ?>
             <p><strong>Artist:</strong> <?php echo htmlspecialchars($product['artist']); ?></p>
         <?php endif; ?>
+
+        <form method="POST" class="add-to-cart-form">
+            <input type="hidden" name="cart_action" value="add">
+            <input type="hidden" name="product_id" value="<?php echo $product['id']; ?>">
+            <input type="hidden" name="_token" value="<?php echo $data['csrf_token']; ?>">
+
+            <div class="form-group">
+                <label for="quantity">Quantity:</label>
+                <input type="number" id="quantity" name="quantity" min="1" max="999" value="1" required>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Add to Cart</button>
+        </form>
+
         <a href="?action=products" class="btn">Back to Products</a>
     </article>
     <?php
@@ -509,6 +566,115 @@ function renderContact(array $data): void
         <button type="submit" class="btn">Send Message</button>
     </form>
     <?php
+}
+
+/**
+ * Render shopping cart page
+ */
+function renderCart(array $data): void
+{
+    $items = $data['cart_items'] ?? [];
+    $total = $data['total'] ?? 0;
+    ?>
+    <h2>Shopping Cart</h2>
+
+    <?php if (empty($items)): ?>
+        <p>Your cart is empty. <a href="?action=products">Continue shopping</a></p>
+    <?php else: ?>
+        <div class="cart-container">
+            <table class="cart-table">
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th>Price</th>
+                        <th>Quantity</th>
+                        <th>Subtotal</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($items as $item): ?>
+                        <tr class="cart-row">
+                            <td class="product-name">
+                                <?php if (!empty($item['image_url'])): ?>
+                                    <img src="<?php echo htmlspecialchars($item['image_url']); ?>" alt="<?php echo htmlspecialchars($item['title']); ?>" class="cart-thumbnail">
+                                <?php endif; ?>
+                                <?php echo htmlspecialchars($item['title'] ?? ''); ?>
+                            </td>
+                            <td class="price">$<?php echo number_format($item['price'] ?? 0, 2); ?></td>
+                            <td class="quantity">
+                                <form method="POST" class="quantity-form" style="display: inline;">
+                                    <input type="hidden" name="cart_action" value="update">
+                                    <input type="hidden" name="cart_id" value="<?php echo $item['id']; ?>">
+                                    <input type="hidden" name="_token" value="<?php echo $data['csrf_token']; ?>">
+                                    <input type="number" name="quantity" min="1" max="999" value="<?php echo $item['quantity']; ?>" class="qty-input" onchange="this.form.submit()">
+                                </form>
+                            </td>
+                            <td class="subtotal">$<?php echo number_format(($item['price'] ?? 0) * $item['quantity'], 2); ?></td>
+                            <td class="actions">
+                                <form method="POST" style="display: inline;">
+                                    <input type="hidden" name="cart_action" value="remove">
+                                    <input type="hidden" name="cart_id" value="<?php echo $item['id']; ?>">
+                                    <input type="hidden" name="_token" value="<?php echo $data['csrf_token']; ?>">
+                                    <button type="submit" class="btn btn-danger">Remove</button>
+                                </form>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+
+            <div class="cart-summary">
+                <h3>Cart Summary</h3>
+                <p><strong>Total:</strong> $<?php echo number_format($total, 2); ?></p>
+                <a href="?action=products" class="btn">Continue Shopping</a>
+                <a href="#checkout" class="btn btn-primary">Proceed to Checkout</a>
+            </div>
+        </div>
+    <?php endif; ?>
+    <?php
+}
+
+/**
+ * Handle cart AJAX actions
+ */
+function handleCartAjaxAction(CartController $cartController, string $action): void
+{
+    $response = [];
+
+    try {
+        switch ($action) {
+            case 'add':
+                $response = $cartController->addToCart();
+                break;
+            case 'remove':
+                $response = $cartController->removeFromCart();
+                break;
+            case 'update':
+                $response = $cartController->updateQuantity();
+                break;
+            default:
+                $response = ['success' => false, 'error' => 'Invalid action'];
+        }
+    } catch (Exception $e) {
+        $response = ['success' => false, 'error' => $e->getMessage()];
+    }
+
+    // If JSON requested, return JSON response
+    if (isset($_POST['json']) || strpos($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json') !== false) {
+        header('Content-Type: application/json');
+        echo json_encode($response);
+        exit;
+    }
+
+    // Otherwise, redirect back to cart
+    if ($response['success'] ?? false) {
+        header('Location: ?action=cart');
+    } else {
+        $_SESSION['error'] = $response['error'] ?? 'An error occurred';
+        header('Location: ?action=cart');
+    }
+    exit;
 }
 
 /**
