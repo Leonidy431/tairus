@@ -69,3 +69,9 @@ kubeconfig
 *.backup
 temp/
 tmp/
+
+# Data archives and extracted files (marketplace context)
+*.zip
+extracted/
+NCNDA*/
+
