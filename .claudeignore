@@ -1,0 +1,161 @@
+# TAIRUS Project Context Filter
+# Critical for autonomous Claude operation: prevents context bloat
+# Rules: If a path matches, Claude MUST NOT read or analyze it
+
+# ============================================================================
+# SECTION 1: Build Artifacts & Compiled Code
+# ============================================================================
+node_modules/
+dist/
+build/
+out/
+*.egg-info/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+coverage/
+.nyc_output/
+.gradle/
+target/
+vendor/
+
+# ============================================================================
+# SECTION 2: Container & Infrastructure Logs
+# ============================================================================
+logs/
+*.log
+*.log.*
+docker-compose.override.yml
+.dockerignore
+docker-volumes/
+k8s-manifests/generated/
+
+# ============================================================================
+# SECTION 3: Dependency Locks & Binaries
+# ============================================================================
+package-lock.json
+yarn.lock
+poetry.lock
+Pipfile.lock
+go.sum
+composer.lock
+.lock
+*.lock
+binary/
+bin/
+
+# ============================================================================
+# SECTION 4: Secrets, Credentials, Environment
+# ============================================================================
+.env
+.env.local
+.env.*.local
+.env.production
+.env.staging
+*.key
+*.pem
+*.p12
+*.p8
+secrets/
+credentials/
+auth_tokens/
+*.pem
+aws-credentials
+
+# ============================================================================
+# SECTION 5: IDE & Editor Artifacts
+# ============================================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+*.sublime-workspace
+.history/
+
+# ============================================================================
+# SECTION 6: Git Internal
+# ============================================================================
+.git/
+.gitignore
+.github/workflows/
+.github/ISSUE_TEMPLATE/
+.gitlab-ci.yml
+
+# ============================================================================
+# SECTION 7: Media Files & Large Data
+# ============================================================================
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.mp4
+*.webm
+*.pdf
+*.zip
+*.tar.gz
+*.rar
+dump*.sql
+*.dump
+data/
+datasets/
+migrations/sql/
+
+# ============================================================================
+# SECTION 8: Cache & Temporary
+# ============================================================================
+.cache/
+tmp/
+temp/
+*.tmp
+.sass-cache/
+.parcel-cache/
+dist-temp/
+
+# ============================================================================
+# SECTION 9: Non-Current Architecture (Historical)
+# ============================================================================
+extracted/
+old_code/
+archive/
+deprecated/
+v1.0/
+legacy/
+
+# ============================================================================
+# SECTION 10: Generated Documentation (Don't Read)
+# ============================================================================
+# NOTE: Claude.md and README.md should be READ, but auto-generated docs should not
+auto_generated_docs/
+api-docs-generated/
+javadoc/
+rustdoc/
+
+# ============================================================================
+# EXCEPTIONS (Force-Read These Even if Name Matches)
+# ============================================================================
+# Include critical files that might match patterns above:
+!.github/workflows/deploy.yml
+!.github/pull_request_template.md
+!.env.example
+!.env.template
+!CLAUDE.md
+!claude.md
+!.clauderc
+!state_journal.md
+!validation_protocol.md
+!context_map.json
+!AUTONOMY_FRAMEWORK.md
+
+# ============================================================================
+# CRITICAL RULE FOR AUTONOMOUS OPERATION
+# ============================================================================
+# If Claude is reading files NOT in this whitelist and the file is:
+# - Larger than 1MB
+# - Updated more than 1 month ago (AND not core to active feature)
+# - In a directory with >100 files
+# THEN Claude MUST ask permission before reading

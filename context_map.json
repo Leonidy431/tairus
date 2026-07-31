@@ -1,0 +1,381 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "project": "TAIRUS Marketplace v2.0",
+    "purpose": "Dependency graph for autonomous Claude operation",
+    "last_updated": "2026-07-31T12:00:00Z",
+    "maintenance": "Auto-updated by CI/CD after significant changes"
+  },
+  "project_structure": {
+    "services": {
+      "auth-service": {
+        "language": "Go",
+        "path": "services/auth-service",
+        "purpose": "OAuth 2.0 & JWT validation",
+        "dependencies": [
+          "shared/models/user.proto",
+          "shared/utils/jwt.go"
+        ],
+        "dependents": [
+          "payment-service",
+          "catalog-service",
+          "messaging-service"
+        ],
+        "critical": true,
+        "entry_point": "main.go",
+        "port": 8000,
+        "health_check": "/health"
+      },
+      "payment-service": {
+        "language": "Python",
+        "path": "services/payment-service",
+        "purpose": "Payments, escrow, fraud detection",
+        "dependencies": [
+          "auth-service",
+          "compliance-service",
+          "shared/models/payment.proto"
+        ],
+        "dependents": [
+          "notification-service",
+          "logistics-service"
+        ],
+        "critical": true,
+        "entry_point": "main.py",
+        "port": 8001,
+        "health_check": "/health",
+        "key_modules": [
+          "fraud_detector.py",
+          "escrow_manager.py",
+          "stripe_gateway.py"
+        ]
+      },
+      "catalog-service": {
+        "language": "Node.js",
+        "path": "services/catalog-service",
+        "purpose": "Product search, filtering, recommendations",
+        "dependencies": [
+          "auth-service",
+          "shared/models/product.proto"
+        ],
+        "dependents": [
+          "logistics-service"
+        ],
+        "critical": false,
+        "entry_point": "index.ts",
+        "port": 8002,
+        "health_check": "/health",
+        "database": "MongoDB (products collection)",
+        "cache": "Redis (search cache, 5 min TTL)"
+      },
+      "compliance-service": {
+        "language": "Go",
+        "path": "services/compliance-service",
+        "purpose": "KYC/AML, sanctions screening, GDPR",
+        "dependencies": [
+          "auth-service",
+          "shared/models/user.proto"
+        ],
+        "dependents": [
+          "payment-service"
+        ],
+        "critical": true,
+        "entry_point": "main.go",
+        "port": 8003,
+        "health_check": "/health",
+        "external_apis": [
+          "FinCEN (SAR filing)",
+          "OFAC (sanctions list)",
+          "World-Check (PEP verification)"
+        ]
+      },
+      "messaging-service": {
+        "language": "Go",
+        "path": "services/messaging-service",
+        "purpose": "Chat, notifications, WebSocket",
+        "dependencies": [
+          "auth-service",
+          "shared/models/message.proto"
+        ],
+        "dependents": [],
+        "critical": false,
+        "entry_point": "main.go",
+        "port": 8004,
+        "health_check": "/health",
+        "protocols": ["WebSocket", "gRPC"]
+      },
+      "logistics-service": {
+        "language": "Go",
+        "path": "services/logistics-service",
+        "purpose": "Shipping, tracking, carrier integration",
+        "dependencies": [
+          "payment-service",
+          "catalog-service"
+        ],
+        "dependents": [
+          "notification-service"
+        ],
+        "critical": false,
+        "entry_point": "main.go",
+        "port": 8005,
+        "health_check": "/health",
+        "external_apis": [
+          "DHL API",
+          "FedEx API",
+          "CDEK API"
+        ]
+      },
+      "notification-service": {
+        "language": "Node.js",
+        "path": "services/notification-service",
+        "purpose": "Email, SMS, push notifications",
+        "dependencies": [
+          "payment-service",
+          "logistics-service",
+          "shared/models/notification.proto"
+        ],
+        "dependents": [],
+        "critical": false,
+        "entry_point": "index.ts",
+        "port": 8006,
+        "health_check": "/health",
+        "async_queue": "Kafka (notification-events topic)"
+      }
+    },
+    "infrastructure": {
+      "api_gateway": {
+        "type": "Kong",
+        "path": "infrastructure/kong-config.yaml",
+        "purpose": "Rate limiting, CORS, request routing",
+        "manages": [
+          "auth-service",
+          "payment-service",
+          "catalog-service",
+          "compliance-service",
+          "messaging-service",
+          "logistics-service",
+          "notification-service"
+        ],
+        "config_file": "infrastructure/kong-config.yaml"
+      },
+      "databases": {
+        "postgresql": {
+          "purpose": "ACID transactions (orders, payments, users)",
+          "version": "15",
+          "host": "localhost:5432",
+          "schema_file": "infrastructure/migrations/schema.sql"
+        },
+        "mongodb": {
+          "purpose": "Flexible schema (products, reviews)",
+          "version": "6",
+          "host": "localhost:27017",
+          "collections": ["products", "reviews", "recommendations"]
+        },
+        "redis": {
+          "purpose": "Cache, sessions, rate limit counters",
+          "version": "7",
+          "host": "localhost:6379",
+          "ttl_defaults": {
+            "session": "3600s",
+            "cache": "300s",
+            "rate_limit": "60s"
+          }
+        }
+      },
+      "message_queues": {
+        "kafka": {
+          "purpose": "Event streaming (orders, payments, logistics)",
+          "version": "7.5",
+          "host": "localhost:9092",
+          "topics": [
+            "order-events",
+            "payment-events",
+            "dispute-events",
+            "shipment-events",
+            "notification-events"
+          ]
+        },
+        "rabbitmq": {
+          "purpose": "Task queue (async jobs with retry)",
+          "version": "3.12",
+          "host": "localhost:5672",
+          "queues": [
+            "send-email",
+            "send-sms",
+            "process-shipment",
+            "generate-invoice"
+          ]
+        }
+      },
+      "search": {
+        "elasticsearch": {
+          "purpose": "Full-text search (products, orders)",
+          "version": "8",
+          "host": "localhost:9200",
+          "indexes": ["products-*", "orders-*"],
+          "retention": "2 years"
+        }
+      },
+      "monitoring": {
+        "prometheus": {
+          "purpose": "Metrics collection",
+          "config": "infrastructure/prometheus-config.yaml",
+          "scrape_interval": "15s",
+          "retention": "15 days"
+        },
+        "grafana": {
+          "purpose": "Visualization",
+          "host": "localhost:3000",
+          "dashboards": [
+            "Financial Dashboard (GMV, revenue)",
+            "Technical Dashboard (latency, errors)",
+            "Quality Dashboard (fraud, disputes)"
+          ]
+        },
+        "jaeger": {
+          "purpose": "Distributed tracing",
+          "host": "localhost:16686",
+          "sampling_rate": 0.1
+        }
+      },
+      "logging": {
+        "elasticsearch": {
+          "purpose": "Log storage (ELK stack)",
+          "index_pattern": "logs-*"
+        },
+        "logstash": {
+          "purpose": "Log processing",
+          "config": "infrastructure/logstash.conf"
+        },
+        "kibana": {
+          "purpose": "Log visualization",
+          "host": "localhost:5601"
+        }
+      }
+    },
+    "shared": {
+      "proto": {
+        "purpose": "gRPC service contracts",
+        "path": "shared/proto",
+        "files": [
+          "user.proto",
+          "product.proto",
+          "payment.proto",
+          "order.proto",
+          "message.proto",
+          "shipment.proto"
+        ]
+      },
+      "models": {
+        "purpose": "Data structures, validation",
+        "path": "shared/models",
+        "language_variants": ["TypeScript", "Python", "Go"]
+      },
+      "utils": {
+        "purpose": "Common utilities (JWT, logging, metrics)",
+        "path": "shared/utils"
+      }
+    },
+    "documentation": {
+      "CLAUDE.md": {
+        "purpose": "Project knowledge base for Claude",
+        "sections": [
+          "Project Overview",
+          "Architecture Decisions",
+          "Development Workflow",
+          "Known Issues",
+          "Autonomy Rules (this file)"
+        ]
+      },
+      "ARCHITECTURE.md": {
+        "path": "docs/ARCHITECTURE.md",
+        "purpose": "System design and component interaction"
+      },
+      "RUNBOOKS.md": {
+        "path": "docs/RUNBOOKS.md",
+        "purpose": "Incident response procedures"
+      },
+      "BUSINESS_METRICS.md": {
+        "path": "docs/BUSINESS_METRICS.md",
+        "purpose": "KPI definitions and monitoring"
+      },
+      "E2E_TESTING_STRATEGY.md": {
+        "path": "docs/E2E_TESTING_STRATEGY.md",
+        "purpose": "Test scenarios and procedures"
+      },
+      "LEGAL_AND_COMPLIANCE.md": {
+        "path": "docs/LEGAL_AND_COMPLIANCE.md",
+        "purpose": "Legal framework, GDPR, KYC/AML"
+      },
+      "ADVANCED_IMPLEMENTATION_PATTERNS.md": {
+        "path": "docs/ADVANCED_IMPLEMENTATION_PATTERNS.md",
+        "purpose": "Event sourcing, circuit breakers, etc."
+      }
+    }
+  },
+  "dependency_matrix": {
+    "critical_path": [
+      "auth-service",
+      "payment-service",
+      "compliance-service"
+    ],
+    "if_you_change": {
+      "auth-service": {
+        "then_test": [
+          "payment-service (auth header validation)",
+          "catalog-service (login flow)",
+          "messaging-service (WebSocket auth)"
+        ],
+        "regenerate": ["shared/proto/auth.proto"]
+      },
+      "payment-service": {
+        "then_test": [
+          "compliance-service (fraud check)",
+          "notification-service (payment confirmation email)",
+          "logistics-service (order creation trigger)"
+        ],
+        "regenerate": ["shared/models/payment.proto"]
+      },
+      "database_schema": {
+        "then_test": [
+          "All services (integration tests)",
+          "Migration rollback script"
+        ],
+        "regenerate": ["shared/models/* (ORM mappings)"]
+      },
+      "kong-config": {
+        "then_test": [
+          "All API endpoints (rate limiting)",
+          "Health checks"
+        ],
+        "regenerate": ["API documentation"]
+      }
+    }
+  },
+  "file_change_impact": {
+    "high_impact": [
+      "shared/proto/*.proto (all services)",
+      "shared/models/*.py (data layer)",
+      "infrastructure/migrations/schema.sql (database contract)",
+      "CLAUDE.md (governance)",
+      "docs/ARCHITECTURE.md (design decisions)"
+    ],
+    "medium_impact": [
+      "services/*/main.* (service startup)",
+      "infrastructure/docker-compose.yml (local dev)",
+      "infrastructure/kubernetes/*.yaml (deployment)"
+    ],
+    "low_impact": [
+      "docs/*.md (documentation only)",
+      "tests/* (test changes don't affect production)",
+      "infrastructure/prometheus-config.yaml (monitoring only)"
+    ]
+  },
+  "alerts_to_claude": {
+    "before_committing": [
+      "Did you update shared/proto/* files? (All services need regeneration)",
+      "Did you change database schema? (Migration file + rollback required)",
+      "Did you modify auth logic? (Security review needed)",
+      "Did you change payment flow? (Compliance + fraud detector review needed)"
+    ]
+  }
+}
