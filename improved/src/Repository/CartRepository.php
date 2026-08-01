@@ -7,7 +7,6 @@ use App\Database\Database;
 class CartRepository extends Repository
 {
     protected string $table = 'carts';
-    private Database $db;
 
     public function __construct(Database $db)
     {
